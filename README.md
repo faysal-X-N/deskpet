@@ -125,7 +125,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-org/deskpet.git
+git clone https://github.com/faysal-X-N/deskpet.git
 cd deskpet
 
 # 生成 Gradle wrapper（如缺失）
