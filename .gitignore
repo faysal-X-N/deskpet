@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+build/
+.idea/
+local.properties
+.kotlin/
+*.apk
+*.aab
+*.jks
+*.keystore
+/secrets/
+/.sisyphus/
