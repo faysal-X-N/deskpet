@@ -23,6 +23,7 @@ class SpritesheetParser {
     @Volatile private var cachedDecoder: BitmapRegionDecoder? = null
     @Volatile private var cachedFullBitmap: Bitmap? = null
     @Volatile private var cachedPath: String? = null
+    @Volatile private var pooledBitmap: Bitmap? = null
 
     fun parse(petJsonPath: String): CodexPetConfig? {
         return try {
@@ -84,9 +85,20 @@ class SpritesheetParser {
         if (decoder != null) {
             val rect = calculateCellRect(stateConfig.row, col, decoder.width, decoder.height)
             return try {
-                decoder.decodeRegion(rect, BitmapFactory.Options().apply {
+                val options = BitmapFactory.Options().apply {
                     inPreferredConfig = Bitmap.Config.ARGB_8888
-                })
+                }
+                pooledBitmap?.let { bmp ->
+                    if (!bmp.isRecycled && bmp.width >= rect.width() && bmp.height >= rect.height()) {
+                        options.inBitmap = bmp
+                    }
+                }
+                val result = decoder.decodeRegion(rect, options)
+                if (result != null && result !== pooledBitmap) {
+                    pooledBitmap?.recycle()
+                    pooledBitmap = result
+                }
+                result
             } catch (e: Exception) { Log.w(TAG, "Failed to decode region", e); null }
         }
 
@@ -113,6 +125,8 @@ class SpritesheetParser {
         cachedDecoder = null
         cachedFullBitmap?.recycle()
         cachedFullBitmap = null
+        pooledBitmap?.recycle()
+        pooledBitmap = null
         cachedPath = null
     }
 }

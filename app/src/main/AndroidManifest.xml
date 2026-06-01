@@ -6,6 +6,7 @@
     <application
         android:name=".DeskPetApp"
         android:allowBackup="false"
+        android:hardwareAccelerated="true"
         android:label="桌面宠物"
         android:supportsRtl="true"
         android:theme="@style/Theme.DeskPet"

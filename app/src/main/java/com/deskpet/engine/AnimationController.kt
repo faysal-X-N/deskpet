@@ -14,7 +14,7 @@ class AnimationController(
     companion object {
         private const val IDLE_FRAME_INTERVAL_NS = 333_000_000L
         private const val ANIM_FRAME_INTERVAL_NS = 200_000_000L
-        private const val MIN_FRAME_DELAY_NS = 500_000L
+        private const val MIN_FRAME_DELAY_NS = 16_000_000L
         private const val LOOP_COUNT_BEFORE_IDLE = 2
         private const val MIN_PET_SIZE_PX = 32
         private const val MIN_SCALE = 1f
@@ -49,12 +49,25 @@ class AnimationController(
         fj = scope.launch(Dispatchers.Main) {
             var lt = System.nanoTime()
             while (isActive) {
-                loader?.let { l ->
-                    petEngine.getCurrentFrame(l, _state.value, fi)?.let { _frame.value = it }
-                    fi++
-                    val tf = petEngine.getFrameCount(l, _state.value)
-                    if (fi >= tf && tf > 0) { fi = 0; if (isCodexPet()) { pc++; if (_state.value != PetAnimationState.IDLE && pc >= LOOP_COUNT_BEFORE_IDLE) { _state.value = PetAnimationState.IDLE; pc = 0 } } }
-                } ?: break
+                val l = loader ?: break
+                val bitmap = withContext(Dispatchers.IO) {
+                    petEngine.getCurrentFrame(l, _state.value, fi)
+                }
+                if (bitmap != null) {
+                    _frame.value = bitmap
+                }
+                fi++
+                val tf = petEngine.getFrameCount(l, _state.value)
+                if (fi >= tf && tf > 0) {
+                    fi = 0
+                    if (isCodexPet()) {
+                        pc++
+                        if (_state.value != PetAnimationState.IDLE && pc >= LOOP_COUNT_BEFORE_IDLE) {
+                            _state.value = PetAnimationState.IDLE
+                            pc = 0
+                        }
+                    }
+                }
                 val ns = if (_state.value == PetAnimationState.IDLE) IDLE_FRAME_INTERVAL_NS else ANIM_FRAME_INTERVAL_NS
                 delay(((ns - (System.nanoTime() - lt)).coerceAtLeast(MIN_FRAME_DELAY_NS)) / 1_000_000)
                 lt = System.nanoTime()

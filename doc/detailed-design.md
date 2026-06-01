@@ -4,6 +4,15 @@
 > 日期：2026-05-25  
 > 依赖：`doc/proposal.md`、`doc/high-level-design.md`
 
+> ⚠️ **实现差异说明**（2026-06-01 更新）  
+> 以下章节的设计与最终代码实现有差异，标注了 **[⚠️ 已变更]** 的节请以实际代码为准：
+> - §1.1.2 OnboardingGuide：设计为 3 页，实际简化为 AlertDialog（用户需求）
+> - §1.1.3 状态管理 / PetListViewModel：设计为独立 ViewModel，实际直接在 MainActivity 管理（延后处理）
+> - §1.3.3 GifRenderer：设计为 Coil 方案，实际使用 android.graphics.Movie（用户确认不需要 Coil）
+> - §1.5.2 ImageDecoder：设计为独立类，实际合入 SpritesheetParser
+>
+> 正文保留原始设计供参考，**[⚠️ 已变更]** 标记处请参见实际代码。
+
 ---
 
 ## 1. 模块详细设计
@@ -46,7 +55,7 @@ class MainActivity : ComponentActivity() {
 
 ---
 
-#### 1.1.2 OnboardingGuide
+#### 1.1.2 OnboardingGuide  [⚠️ 已变更：实际简化为 AlertDialog]
 
 **职责**：首次启动时以 Dialog 展示权限说明和操作教程。
 
@@ -93,7 +102,7 @@ fun PetListScreen(
 5. 未选中宠物时，不显示高亮
 ```
 
-**状态管理**：由 `PetListViewModel` 提供：
+**状态管理**：`[⚠️ 已变更]` 设计为独立 `PetListViewModel`，实际直接在 MainActivity 中管理。原设计如下供参考：
 ```
 class PetListViewModel(
     private val petRepository: PetRepository
@@ -490,7 +499,7 @@ fun calculateCellRect(row: Int, col: Int, spritesheetWidth: Int, spritesheetHeig
 
 ---
 
-#### 1.3.3 GifRenderer
+#### 1.3.3 GifRenderer  [⚠️ 已变更：实际使用 android.graphics.Movie]
 
 **职责**：解码 GIF 帧序列，按帧间隔循环输出。
 
@@ -875,7 +884,7 @@ object PermissionManager {
 
 ---
 
-#### 1.5.2 ImageDecoder
+#### 1.5.2 ImageDecoder  [⚠️ 已变更：功能合入 SpritesheetParser]
 
 **职责**：统一图片解码接口。
 
