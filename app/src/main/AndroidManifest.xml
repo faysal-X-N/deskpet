@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".DeskPetApp"
@@ -25,6 +27,7 @@
         <service
             android:name=".overlay.PetOverlayService"
             android:exported="false"
+            android:foregroundServiceType="specialUse"
             android:stopWithTask="true" />
 
         <provider

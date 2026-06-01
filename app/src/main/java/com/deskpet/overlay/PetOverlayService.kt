@@ -26,6 +26,7 @@ import com.deskpet.data.model.DragDirection
 import com.deskpet.data.model.PetAnimationState
 import com.deskpet.engine.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 
 class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateRegistryOwner {
 
@@ -109,8 +110,14 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                     Log.e(TAG, "err", e)
                 }
             }
+        } ?: kotlinx.coroutines.runBlocking {
+            kotlinx.coroutines.withTimeout(2000L) {
+                repo.getActivePetId().first()?.let { id ->
+                    show(id)
+                }
+            }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onDestroy() {
