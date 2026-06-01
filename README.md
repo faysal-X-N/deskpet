@@ -128,7 +128,7 @@
 #### 3.1 开启宠物
 
 1. 打开「桌面宠物」应用
-2. 在宠物列表中点击想要显示的宠物（当前选中会有紫色边框标记）
+2. 在宠物列表中点击想要显示的宠物（当前选中会有弹簧缩放的阴影效果）
 3. 点击「**开启**」按钮
 4. 宠物出现在手机屏幕上方悬浮窗中
 
@@ -281,7 +281,7 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 
 #### Q6：应用会消耗很多电量吗？
 
-本应用在宠物静止时（idle 状态）CPU 占用极低。动画播放和拖拽操作会短暂增加 CPU 使用，但整体电量消耗在日常使用中几乎不可感知。如果您发现异常耗电，可以在不需要宠物时点击「关闭」来停止悬浮窗服务。
+本应用已做多项性能优化：帧解码在后台 IO 线程执行、GPU 硬件加速渲染、最低帧间隔保护。宠物静止时（idle 状态）CPU 占用极低。如果您发现异常耗电，可以在不需要宠物时点击「关闭」来停止悬浮窗服务。
 
 ---
 
@@ -291,12 +291,14 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 - 👆 **触摸交互** — 点击招手、长按拖拽移动、双指缩放大小
 - 🎬 **9 种标准动画** — 兼容 Codex Pet 标准，idle / running / jumping / waving 等
 - 🤖 **自主行为** — 约 30 秒无操作后宠物会自己散步、蹦跳、东张西望
+- ⚡ **性能优化** — IO 线程解码 + GPU 硬件加速 + 最低帧间隔保护，发热控制
+- 🔔 **前台服务** — Android 14+ 前台服务声明，通知栏常驻防杀
 - 📦 **Codex Pet 兼容** — 支持社区 2500+ 宠物素材包导入
 - 🖼️ **GIF 支持** — 直接导入 GIF 动图即可作为宠物
 - 💾 **备份恢复** — 一键导出/恢复全部宠物数据，方便换机迁移
 - 🎯 **独立记忆** — 每只宠物独立记忆屏幕位置和缩放大小
 - 🔒 **隐私优先** — 无网络权限，纯本地运行，不收集任何数据
-- 🧪 **含测试** — 24 项自动化测试覆盖核心逻辑
+- 🧪 **含测试** — 46 项自动化测试覆盖核心逻辑
 
 ---
 
@@ -306,11 +308,11 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 |------|------|
 | Kotlin 2.0 | 开发语言 |
 | Jetpack Compose | UI 框架 |
-| Compose Canvas | 悬浮窗宠物渲染（60FPS） |
+| Compose Canvas | 悬浮窗宠物渲染 |
 | WindowManager | 悬浮窗管理 |
 | DataStore Preferences | 本地持久化存储 |
-| BitmapRegionDecoder | 精灵表逐帧解码 |
-| Android Movie | GIF 动图解码 |
+| BitmapRegionDecoder | 精灵表逐帧解码（GPU 显存） |
+| Foreground Service | Android 14+ 前台服务常驻 |
 
 **最低要求**：Android 8.0（API 26）｜**目标版本**：Android 14（API 34）
 
@@ -322,9 +324,6 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 # 克隆仓库
 git clone https://github.com/faysal-X-N/deskpet.git
 cd deskpet
-
-# 生成 Gradle wrapper（如缺失）
-gradle wrapper
 
 # 构建 Debug APK
 ./gradlew :app:assembleDebug
@@ -356,9 +355,10 @@ app/src/main/java/com/deskpet/
 │   └── GestureHandler.kt        # 手势处理（点击/长按拖拽/双指缩放）
 ├── engine/
 │   ├── PetEngine.kt             # 引擎入口（策略模式：Codex Pet / GIF 分发）
-│   ├── SpritesheetParser.kt     # 精灵表解析（BitmapRegionDecoder / full bitmap 回退）
-│   ├── GifRenderer.kt           # GIF 帧解码（Android Movie）
-│   ├── AnimationController.kt   # 动画状态机 + 60FPS 帧率控制
+│   ├── SpritesheetParser.kt     # 精灵表解析（BitmapRegionDecoder + GPU 显存）
+│   ├── GifRenderer.kt           # GIF 帧解码
+│   ├── AnimationController.kt   # 动画状态机 + IO 线程帧解码 + 16ms 帧率保护
+│   ├── IAnimationStateController.kt  # 动画控制接口（便于测试）
 │   └── AutonomousBehavior.kt    # 自主行为调度（随机间隔触发散步/跳跃等）
 ├── data/
 │   ├── PetRepository.kt         # 宠物数据仓库（CRUD + 位置/缩放保存）
@@ -372,8 +372,6 @@ app/src/main/java/com/deskpet/
 │       ├── PetAnimationState.kt # 9 种标准动画状态枚举
 │       ├── PetType.kt           # 宠物类型枚举（CODEX_PET / GIF）
 │       └── DragDirection.kt     # 拖拽方向枚举（LEFT/RIGHT/UP/DOWN）
-└── foundation/
-    └── PermissionManager.kt     # 悬浮窗权限检查与跳转
 ```
 
 ---
