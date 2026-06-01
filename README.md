@@ -5,6 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-purple)](https://kotlinlang.org)
+[![CI](https://github.com/faysal-X-N/deskpet/actions/workflows/test.yml/badge.svg)](https://github.com/faysal-X-N/deskpet/actions)
 
 ---
 
@@ -67,6 +68,13 @@
 
 ---
 
+## 📥 下载
+
+- **[最新 APK](https://github.com/faysal-X-N/deskpet/releases)** — GitHub Releases 页面
+- **[Actions → 最新运行 → Artifacts](https://github.com/faysal-X-N/deskpet/actions)** — 每次提交自动打包
+
+---
+
 ## 📱 中文使用说明
 
 ### 一、安装指南
@@ -102,8 +110,9 @@
 宠物需要「悬浮窗」权限才能在屏幕上显示。操作流程如下：
 
 1. 在宠物栏中点击「**开启**」按钮
-2. 如果尚未授予悬浮窗权限，系统会自动跳转到权限设置页面
+2. 如果尚未授予悬浮窗权限，应用会自动跳转到权限设置页面
 3. 找到「桌面宠物」→ 打开「允许显示在其他应用的上层」开关
+4. 返回应用 → **自动开启悬浮窗**，无需再点一次
 4. 按返回键回到应用，**再次点击「开启」**
 
 > **各品牌手机路径参考**：
@@ -291,13 +300,16 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 - 👆 **触摸交互** — 点击招手、长按拖拽移动、双指缩放大小
 - 🎬 **9 种标准动画** — 兼容 Codex Pet 标准，idle / running / jumping / waving 等
 - 🤖 **自主行为** — 约 30 秒无操作后宠物会自己散步、蹦跳、东张西望
-- ⚡ **性能优化** — IO 线程解码 + GPU 硬件加速 + 最低帧间隔保护，发热控制
-- 🔔 **前台服务** — Android 14+ 前台服务声明，通知栏常驻防杀
+- ⚡ **性能优化** — IO 线程解码 + GPU 硬件加速 + idle 2FPS 低功耗
+- 🔔 **前台服务** — Android 14+ 通知栏常驻防杀
+- 🪄 **自动权限** — 点开启 → 无权限 → 跳设置 → 开权限返回 → 自动开启，不用再点
 - 📦 **Codex Pet 兼容** — 支持社区 2500+ 宠物素材包导入
 - 🖼️ **GIF 支持** — 直接导入 GIF 动图即可作为宠物
 - 💾 **备份恢复** — 一键导出/恢复全部宠物数据，方便换机迁移
 - 🎯 **独立记忆** — 每只宠物独立记忆屏幕位置和缩放大小
+- 🎓 **内置教程** — 顶栏 ❓ 按钮随时查看使用说明和下载链接
 - 🔒 **隐私优先** — 无网络权限，纯本地运行，不收集任何数据
+- 🔄 **CI/CD** — GitHub Actions 自动测试 + 自动打包 APK
 - 🧪 **含测试** — 46 项自动化测试覆盖核心逻辑
 
 ---
