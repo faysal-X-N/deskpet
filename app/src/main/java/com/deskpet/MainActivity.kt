@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                     // 操作
                     Text("🖐 操作方式", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
-                    Text("• 单击悬浮窗宠物 = 招手\n• 长按拖拽 = 移动位置\n• 双指捏合 = 缩放大小\n• 拖拽方向 = 切换跑动/跳跃动画\n• 宠物栏6档缩放 = 精确控制大小")
+                    Text("• 单击悬浮窗宠物 = 招手\n• 长按拖拽 = 移动位置\n• 双指捏合 = 缩放大小\n• 拖拽方向 = 切换跑动/跳跃动画\n• 界面缩放滑块 = 精确控制大小")
 
                     Spacer(Modifier.height(12.dp))
 

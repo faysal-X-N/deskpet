@@ -87,10 +87,10 @@ fun PetListScreen(
                             shape = RoundedCornerShape(20.dp)
                         ) { Text("开启") }
                 }
+                IconButton(onClick = onShowHelp) {
+                    Text("?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
                 Box {
-                    IconButton(onClick = onShowHelp) {
-                        Text("?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    }
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, "更多", tint = MaterialTheme.colorScheme.onSurface)
                     }
