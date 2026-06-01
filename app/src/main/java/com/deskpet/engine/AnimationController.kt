@@ -12,7 +12,7 @@ class AnimationController(
     private val scope: CoroutineScope
 ) : IAnimationStateController {
     companion object {
-        private const val IDLE_FRAME_INTERVAL_NS = 333_000_000L
+        private const val IDLE_FRAME_INTERVAL_NS = 500_000_000L
         private const val ANIM_FRAME_INTERVAL_NS = 200_000_000L
         private const val MIN_FRAME_DELAY_NS = 16_000_000L
         private const val LOOP_COUNT_BEFORE_IDLE = 2
