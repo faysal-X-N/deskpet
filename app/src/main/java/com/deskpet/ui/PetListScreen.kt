@@ -49,7 +49,8 @@ fun PetListScreen(
     onDeletePet: (String) -> Unit,
     onScaleChange: (Float) -> Unit,
     onExportPet: (PetInfo) -> Unit = {},
-    onBackupAll: () -> Unit = {}
+    onBackupAll: () -> Unit = {},
+    onShowHelp: () -> Unit = {}
 ) {
     var deleteTarget by remember { mutableStateOf<String?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -87,6 +88,9 @@ fun PetListScreen(
                         ) { Text("开启") }
                 }
                 Box {
+                    IconButton(onClick = onShowHelp) {
+                        Text("?", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    }
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, "更多", tint = MaterialTheme.colorScheme.onSurface)
                     }

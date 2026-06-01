@@ -1,15 +1,31 @@
 package com.deskpet
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.deskpet.data.FileManager
 import com.deskpet.data.PetRepository
@@ -34,20 +50,32 @@ class MainActivity : ComponentActivity() {
         var showImport by remember { mutableStateOf(false) }
         var overlayOn by remember { mutableStateOf(false) }
         var scale by remember { mutableFloatStateOf(1f) }
+        var pendingStart by remember { mutableStateOf(false) }
+        var showHelp by remember { mutableStateOf(false) }
         val petList by repo.getAllPets().collectAsStateWithLifecycle(emptyList())
         val activeId by repo.getActivePetId().collectAsStateWithLifecycle(null)
         val isFirstLaunch by repo.isFirstLaunch().collectAsStateWithLifecycle(true)
         LaunchedEffect(Unit) { SamplePetLoader.loadSamplePets(this@MainActivity, repo) }
 
-        if (isFirstLaunch) {
-            AlertDialog(
-                onDismissRequest = { sc.launch { repo.setFirstLaunchDone() } },
-                title = { Text("欢迎使用桌面宠物") },
-                text = { Text("宠物需要「悬浮窗」权限才能显示在其他 App 上方。\n\n操作说明：\n• 点击宠物 = 招手\n• 长按拖拽 = 移动\n• 双指缩放 = 调整大小") },
-                confirmButton = {
-                    TextButton(onClick = { sc.launch { repo.setFirstLaunchDone() } }) { Text("知道了") }
+        // 从设置页返回后自动重试开启
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        DisposableEffect(lifecycle) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME && pendingStart && Settings.canDrawOverlays(this@MainActivity)) {
+                    pendingStart = false
+                    activeId?.let {
+                        startService(Intent(this@MainActivity, PetOverlayService::class.java)
+                            .apply { putExtra(PetOverlayService.EXTRA_PET_ID, it) })
+                        overlayOn = true
+                    }
                 }
-            )
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
+
+        if (isFirstLaunch || showHelp) {
+            WelcomeGuide { sc.launch { repo.setFirstLaunchDone(); showHelp = false } }
         }
 
         if (showImport) {
@@ -61,9 +89,16 @@ class MainActivity : ComponentActivity() {
                 onPetSelected = { sc.launch { repo.setActivePet(it) } },
                 onStartOverlay = {
                     activeId?.let {
-                        startService(Intent(this@MainActivity, PetOverlayService::class.java)
-                            .apply { putExtra(PetOverlayService.EXTRA_PET_ID, it) })
-                        overlayOn = true
+                        if (Settings.canDrawOverlays(this@MainActivity)) {
+                            startService(Intent(this@MainActivity, PetOverlayService::class.java)
+                                .apply { putExtra(PetOverlayService.EXTRA_PET_ID, it) })
+                            overlayOn = true
+                        } else {
+                            pendingStart = true
+                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${this@MainActivity.packageName}"))
+                            startActivity(intent)
+                        }
                     }
                 },
                 onStopOverlay = {
@@ -99,8 +134,67 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "出错：${e.message}", Toast.LENGTH_LONG).show()
                         }
                     }
-                }
+                },
+                onShowHelp = { showHelp = true }
             )
         }
+    }
+
+    @Composable
+    private fun WelcomeGuide(onDismiss: () -> Unit) {
+        val ctx = LocalContext.current
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("🐾 欢迎使用桌面宠物", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    // 权限
+                    Text("📌 权限说明", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("点击「开启」后如提示需悬浮窗权限，请允许。各手机路径不同，通常：设置 → 应用 → 桌面宠物 → 显示在其他应用上层")
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 操作
+                    Text("🖐 操作方式", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("• 单击悬浮窗宠物 = 招手\n• 长按拖拽 = 移动位置\n• 双指捏合 = 缩放大小\n• 拖拽方向 = 切换跑动/跳跃动画\n• 宠物栏6档缩放 = 精确控制大小")
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 导入
+                    Text("📦 导入 Codex 宠物", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("应用内置了 7 只示例宠物。你也可以导入更多：\n1. 点击底部「导入」按钮\n2. 选择「🎨 导入 Codex Pet 素材包」\n3. 选取下载的 .zip 文件")
+
+                    Spacer(Modifier.height(8.dp))
+                    Text("从哪里下载 Codex 宠物？", fontWeight = FontWeight.Bold)
+                    Text(buildAnnotatedString {
+                        append("👉 ")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+                            append("codexpet.xyz")
+                        }
+                    }, modifier = Modifier.clickable {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://codexpet.xyz/")))
+                    })
+                    Text(buildAnnotatedString {
+                        append("👉 ")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)) {
+                            append("github.com/Codexdei/petdex")
+                        }
+                    }, modifier = Modifier.clickable {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Codexdei/petdex")))
+                    })
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 提示
+                    Text("💡 小提示", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("• 每只宠物的位置和大小独立记忆\n• 长按宠物栏卡片可删除宠物\n• 右上角菜单可备份全部宠物\n• 换手机时用备份恢复功能迁移\n• 宠物不含网络权限，纯本地运行")
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
+        )
     }
 }
