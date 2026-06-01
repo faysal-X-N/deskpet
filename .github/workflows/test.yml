@@ -24,5 +24,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Use official Gradle distribution (GitHub Actions 在美国)
+        run: |
+          sed -i 's|mirrors\.aliyun\.com/github/releases/gradle/gradle-distributions/v8\.13\.0/gradle-8\.13-bin\.zip|services.gradle.org/distributions/gradle-8.13-bin.zip|' gradle/wrapper/gradle-wrapper.properties
+
       - name: Run unit tests
         run: chmod +x gradlew && ./gradlew testDebugUnitTest
