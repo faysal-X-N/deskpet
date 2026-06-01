@@ -100,7 +100,13 @@ class FileManager(private val context: Context) {
                     ZipOutputStream(bos).use { z ->
                         // 手动拼 JSON，不依赖序列化库的类型推断
                         z.putNextEntry(ZipEntry("pets.json"))
-                        z.write(buildPetsJson(petList).toByteArray())
+                        val sanitizedList = petList.map { pet ->
+                            pet.copy(
+                                petJsonPath = pet.petJsonPath?.let { File(it).name },
+                                spritesheetPath = File(pet.spritesheetPath).name
+                            )
+                        }
+                        z.write(buildPetsJson(sanitizedList).toByteArray())
                         z.closeEntry()
                         // 每个宠物的素材文件
                         petList.forEach { addPetFilesToZip(z, it, "pets/${it.id}/") }
@@ -164,6 +170,7 @@ class FileManager(private val context: Context) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(Intent.createChooser(intent, "导出宠物"))
+        zipFile.deleteOnExit()
     }
 
     // ===== Helpers =====
@@ -173,7 +180,8 @@ class FileManager(private val context: Context) {
         if (dir != null && dir.exists()) {
             dir.walkTopDown().forEach { file ->
                 if (file == dir) return@forEach
-                val entryName = prefix + dir.toPath().relativize(file.toPath()).toString()
+                val entryName = (prefix + dir.toPath().relativize(file.toPath()).toString())
+                    .replace('\\', '/')
                 if (file.isDirectory) {
                     zip.putNextEntry(ZipEntry("$entryName/"))
                     zip.closeEntry()

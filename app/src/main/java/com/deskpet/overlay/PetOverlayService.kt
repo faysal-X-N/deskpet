@@ -3,6 +3,7 @@ package com.deskpet.overlay
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -12,6 +13,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
@@ -98,6 +100,29 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
         })
+        startForeground()
+    }
+
+    private fun startForeground() {
+        val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(android.app.NotificationChannel(
+                CHANNEL_ID, "桌面宠物", android.app.NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "宠物悬浮窗运行中" })
+        }
+        val ntf = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("桌面宠物")
+            .setContentText("正在运行")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setOngoing(true)
+            .build()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFY_ID, ntf, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFY_ID, ntf)
+            }
+        } catch (e: Exception) { Log.w(TAG, "startForeground failed", e) }
     }
 
     override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {
@@ -179,6 +204,9 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         savedScale = info.scale
         anim.start()
         add()
+        auto?.stop()
+        auto = AutonomousBehavior(anim, sc)
+        auto?.start()
     }
 
     private fun add() {
@@ -267,5 +295,5 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         }
     }
 
-    companion object { const val EXTRA_PET_ID = "pet_id"; private const val TAG = "PO" }
+    companion object { const val EXTRA_PET_ID = "pet_id"; private const val TAG = "PO"; private const val NOTIFY_ID = 1; private const val CHANNEL_ID = "deskpet_fg" }
 }
