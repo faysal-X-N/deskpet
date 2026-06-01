@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -21,7 +22,8 @@ fun PetOverlayRenderer(anim: AnimationController, gestureModifier: Modifier, mod
     val h by anim.petHeight.collectAsState()
     val d = LocalDensity.current
     Box(modifier.then(gestureModifier).size(with(d) { w.toDp() }, with(d) { h.toDp() }), Alignment.TopStart) {
-        Canvas(Modifier.fillMaxSize()) { frame?.let { drawImage(it.asImageBitmap(), dstSize = IntSize(size.width.toInt(), size.height.toInt())) } }
+        val img = remember(frame) { frame?.asImageBitmap() }
+        Canvas(Modifier.fillMaxSize()) { img?.let { drawImage(it, dstSize = IntSize(size.width.toInt(), size.height.toInt())) } }
     }
 }
 

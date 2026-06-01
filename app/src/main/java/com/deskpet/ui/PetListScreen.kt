@@ -139,7 +139,7 @@ fun PetListScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(petList, key = { it.id }) { pet ->
+                items(petList, key = { it.id }, contentType = { it.type }) { pet ->
                     PetGridCard(
                         pet = pet,
                         isActive = pet.id == activePetId,
