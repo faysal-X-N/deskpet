@@ -5,7 +5,7 @@ import kotlinx.coroutines.*
 import kotlin.random.Random
 
 class AutonomousBehavior(
-    private val animationController: AnimationController,
+    private val animationController: IAnimationStateController,
     private val coroutineScope: CoroutineScope
 ) {
     private val autoStates = listOf(

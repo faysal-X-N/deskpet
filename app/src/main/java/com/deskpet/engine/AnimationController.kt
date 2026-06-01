@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 class AnimationController(
     private val petEngine: PetEngine,
     private val scope: CoroutineScope
-) {
+) : IAnimationStateController {
     companion object {
         private const val IDLE_FRAME_INTERVAL_NS = 333_000_000L
         private const val ANIM_FRAME_INTERVAL_NS = 200_000_000L
@@ -22,7 +22,7 @@ class AnimationController(
     }
 
     private val _state = MutableStateFlow(PetAnimationState.IDLE)
-    val currentState: StateFlow<PetAnimationState> = _state
+    override val currentState: StateFlow<PetAnimationState> = _state
     private val _frame = MutableStateFlow<Bitmap?>(null)
     val currentFrame: StateFlow<Bitmap?> = _frame
     private val _w = MutableStateFlow(192)
@@ -63,7 +63,7 @@ class AnimationController(
     }
 
     fun stop() { fj?.cancel(); fj = null }
-    fun switchState(st: PetAnimationState) { _state.value = st; fi = 0; pc = 0 }
+    override fun switchState(st: PetAnimationState) { _state.value = st; fi = 0; pc = 0 }
     fun reset() { _state.value = PetAnimationState.IDLE; fi = 0; pc = 0 }
     fun setScale(v: Float) { s = v.coerceIn(MIN_SCALE, MAX_SCALE); loader?.let { val (w, h) = petEngine.getPetSize(it); _w.value = (w * s).toInt().coerceAtLeast(MIN_PET_SIZE_PX); _h.value = (h * s).toInt().coerceAtLeast(MIN_PET_SIZE_PX) } }
     fun isCodexPet() = loader is PetEngine.PetLoader.CodexPet

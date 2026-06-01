@@ -194,21 +194,8 @@ class FileManager(private val context: Context) {
     }
 
     private fun buildPetsJson(petList: List<PetInfo>): String {
-        val sb = StringBuilder("[")
-        petList.forEachIndexed { i, pet ->
-            if (i > 0) sb.append(",")
-            sb.append("{\"id\":\"${esc(pet.id)}\",\"type\":\"${pet.type.name}\",")
-            sb.append("\"displayName\":\"${esc(pet.displayName)}\",")
-            if (pet.petJsonPath != null) sb.append("\"petJsonPath\":\"${esc(pet.petJsonPath)}\",")
-            sb.append("\"spritesheetPath\":\"${esc(pet.spritesheetPath)}\",")
-            sb.append("\"positionX\":${pet.positionX},\"positionY\":${pet.positionY},")
-            sb.append("\"scale\":${pet.scale},\"isActive\":${pet.isActive},\"sourceId\":\"${esc(pet.sourceId)}\"}")
-        }
-        sb.append("]")
-        return sb.toString()
+        return json.encodeToString(kotlinx.serialization.builtins.ListSerializer(PetInfo.serializer()), petList)
     }
-
-    private fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
 
     private fun extractZip(inputStream: InputStream, destDir: File) {
         val base = destDir.canonicalPath
