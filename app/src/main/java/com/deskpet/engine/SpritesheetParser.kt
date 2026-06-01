@@ -85,7 +85,7 @@ class SpritesheetParser {
             val rect = calculateCellRect(stateConfig.row, col, decoder.width, decoder.height)
             return try {
                 decoder.decodeRegion(rect, BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.HARDWARE
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
                 })
             } catch (e: Exception) { Log.w(TAG, "Failed to decode region", e); null }
         }

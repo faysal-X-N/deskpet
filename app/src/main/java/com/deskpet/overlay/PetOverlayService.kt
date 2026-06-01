@@ -104,25 +104,28 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     }
 
     private fun startForeground() {
-        val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(android.app.NotificationChannel(
-                CHANNEL_ID, "桌面宠物", android.app.NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "宠物悬浮窗运行中" })
-        }
-        val ntf = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("桌面宠物")
-            .setContentText("正在运行")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)
-            .build()
         try {
+            val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(android.app.NotificationChannel(
+                    CHANNEL_ID, "桌面宠物", android.app.NotificationManager.IMPORTANCE_LOW
+                ).apply { description = "宠物悬浮窗运行中" })
+            }
+            val ntf = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("桌面宠物")
+                .setContentText("正在运行")
+                .setSmallIcon(android.R.drawable.ic_menu_gallery)
+                .setOngoing(true)
+                .build()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(NOTIFY_ID, ntf, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(NOTIFY_ID, ntf)
             }
-        } catch (e: Exception) { Log.w(TAG, "startForeground failed", e) }
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground failed", e)
+            Toast.makeText(this@PetOverlayService, "前台服务失败: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {
@@ -132,7 +135,8 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                 try {
                     show(id)
                 } catch (e: Exception) {
-                    Log.e(TAG, "err", e)
+                    Log.e(TAG, "show failed", e)
+                    Toast.makeText(this@PetOverlayService, "启动失败: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         } ?: sc.launch {
@@ -141,6 +145,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                 if (id != null) show(id)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to recover pet on restart", e)
+                Toast.makeText(this@PetOverlayService, "恢复失败: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
         return START_STICKY

@@ -22,8 +22,7 @@ fun PetOverlayRenderer(anim: AnimationController, gestureModifier: Modifier, mod
     val h by anim.petHeight.collectAsState()
     val d = LocalDensity.current
     Box(modifier.then(gestureModifier).size(with(d) { w.toDp() }, with(d) { h.toDp() }), Alignment.TopStart) {
-        val img = remember(frame) { frame?.asImageBitmap() }
-        Canvas(Modifier.fillMaxSize()) { img?.let { drawImage(it, dstSize = IntSize(size.width.toInt(), size.height.toInt())) } }
+        Canvas(Modifier.fillMaxSize()) { frame?.let { drawImage(it.asImageBitmap(), dstSize = IntSize(size.width.toInt(), size.height.toInt())) } }
     }
 }
 
