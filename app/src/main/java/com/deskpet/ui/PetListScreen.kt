@@ -3,6 +3,8 @@ package com.deskpet.ui
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
@@ -12,7 +14,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -20,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -69,12 +72,19 @@ fun PetListScreen(
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
             Text("宠物栏", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = onImportClick) { Text("导入") }
+                IconButton(onClick = onImportClick) {
+                    Icon(Icons.Default.Add, "导入", tint = MaterialTheme.colorScheme.onSurface)
+                }
                 if (activePetId != null) {
                     if (isOverlayRunning)
-                        Button(onClick = onStopOverlay, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("关闭") }
+                        Button(onClick = onStopOverlay,
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) { Text("关闭") }
                     else
-                        Button(onClick = onStartOverlay) { Text("开启") }
+                        Button(onClick = onStartOverlay,
+                            shape = RoundedCornerShape(20.dp)
+                        ) { Text("开启") }
                 }
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
@@ -152,17 +162,26 @@ private fun PetGridCard(
     onLongClick: () -> Unit,
     onExport: () -> Unit = {}
 ) {
+    val scale by animateFloatAsState(
+        if (isActive) 1.04f else 1f,
+        spring(dampingRatio = 0.6f, stiffness = 400f)
+    )
     Card(
-        modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        modifier = Modifier.aspectRatio(1f).graphicsLayer {
+            scaleX = scale; scaleY = scale
+        }.combinedClickable(onClick = onClick, onLongClick = onLongClick),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isActive) 6.dp else 2.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isActive) 6.dp else 1.dp
+        ),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
             else MaterialTheme.colorScheme.surface
         ),
         border = androidx.compose.foundation.BorderStroke(
-            width = if (isActive) 3.dp else 1.dp,
-            color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+            width = 1.dp,
+            color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -174,11 +193,6 @@ private fun PetGridCard(
                 Text(pet.displayName, style = MaterialTheme.typography.labelSmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                     color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-            }
-            if (isActive) {
-                Icon(Icons.Default.CheckCircle, "当前宠物",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp))
             }
             IconButton(onClick = onExport, modifier = Modifier.align(Alignment.BottomEnd).size(28.dp)) {
                 Icon(Icons.Default.Share, "导出",

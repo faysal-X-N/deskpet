@@ -110,11 +110,12 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                     Log.e(TAG, "err", e)
                 }
             }
-        } ?: kotlinx.coroutines.runBlocking {
-            kotlinx.coroutines.withTimeout(2000L) {
-                repo.getActivePetId().first()?.let { id ->
-                    show(id)
-                }
+        } ?: sc.launch {
+            try {
+                val id = repo.getActivePetId().first()
+                if (id != null) show(id)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to recover pet on restart", e)
             }
         }
         return START_STICKY
