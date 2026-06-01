@@ -46,13 +46,6 @@ class PetEngine(
         }
     }
 
-    fun refreshGifLoader(loader: PetLoader): Boolean {
-        return when (loader) {
-            is PetLoader.Gif -> gifRenderer.load(loader.filePath)
-            else -> true
-        }
-    }
-
     fun getCurrentFrame(
         loader: PetLoader,
         state: PetAnimationState,
