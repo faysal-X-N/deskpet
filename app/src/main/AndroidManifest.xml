@@ -21,7 +21,11 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:enableOnBackInvokedCallback="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            <!-- enableOnBackInvokedCallback：targetSdk 35 时代接入预测性返回。
+                 全工程无 onBackPressed 重写，Compose BackHandler/对话框
+                 均走 OnBackPressedDispatcher，开启无行为回归 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
