@@ -116,6 +116,16 @@ class PetRepository(private val petStore: IPetStore) {
     suspend fun getPet(petId: String): PetInfo? {
         return petStore.petListFlow.first().find { it.id == petId }
     }
+
+    fun overlayAutoResume(): Flow<Boolean> = petStore.overlayAutoResumeFlow
+
+    /** 异步写"恢复意图"标志：通知栏关闭路径在服务销毁瞬间调用，必须 fire-and-forget */
+    fun setOverlayAutoResumeAsync(v: Boolean) {
+        persistenceScope.launch {
+            runCatching { petStore.setOverlayAutoResume(v) }
+                .onFailure { android.util.Log.w("PetRepository", "AutoResume flag write failed", it) }
+        }
+    }
     suspend fun existsByPath(path: String): Boolean = petStore.petListFlow.first().any { it.spritesheetPath == path }
     suspend fun existsBySourceId(sourceId: String): Boolean = sourceId.isNotEmpty() && petStore.petListFlow.first().any { it.sourceId == sourceId }
     fun isFirstLaunch(): Flow<Boolean> = petStore.isFirstLaunch

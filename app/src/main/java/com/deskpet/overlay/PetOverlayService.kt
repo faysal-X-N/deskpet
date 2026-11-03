@@ -248,8 +248,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {
         // LifecycleService 需要 super 来派发生命周期事件（否则 lifecycle 一直停在 CREATED）
         super.onStartCommand(i, f, s)
-        // 通知栏「关闭宠物」按钮
+        // 通知栏「关闭宠物」按钮：这是用户主动关闭，要清掉自动恢复标志，
+        // 否则下次打开 App 宠物会"复活"（违背用户刚才的关闭意图）
         if (i?.action == ACTION_STOP) {
+            repo.setOverlayAutoResumeAsync(false)
             stopSelf()
             return START_NOT_STICKY
         }

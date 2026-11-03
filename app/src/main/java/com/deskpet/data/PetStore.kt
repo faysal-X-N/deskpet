@@ -27,6 +27,7 @@ class PetStore(private val context: Context) : IPetStore {
         private val ACTIVE_PET_KEY = stringPreferencesKey("active_pet_id")
         private val FIRST_LAUNCH_KEY = booleanPreferencesKey("is_first_launch")
         private val SAMPLES_LOADED_KEY = booleanPreferencesKey("samples_loaded")
+        private val OVERLAY_AUTO_RESUME_KEY = booleanPreferencesKey("overlay_auto_resume")
     }
 
     /** 解析失败时回退到最后一次成功的列表，避免一次损坏让用户所有宠物"集体消失"。
@@ -87,5 +88,17 @@ class PetStore(private val context: Context) : IPetStore {
 
     override suspend fun setSamplesLoaded() {
         context.dataStore.edit { it[SAMPLES_LOADED_KEY] = true }
+    }
+
+    /**
+     * 用户的"意图"开关：开启宠物时写 true，主动关闭（通知栏/收纳坞）时写 false。
+     * 进程被系统/ROM 杀掉时没有回调，标志保持 true——下次打开 App 据此自动恢复。
+     */
+    override val overlayAutoResumeFlow: Flow<Boolean> = safeData(context.dataStore).map {
+        it[OVERLAY_AUTO_RESUME_KEY] ?: false
+    }
+
+    override suspend fun setOverlayAutoResume(v: Boolean) {
+        context.dataStore.edit { it[OVERLAY_AUTO_RESUME_KEY] = v }
     }
 }

@@ -57,6 +57,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlay(petId: String) {
+        // 记录"用户想看宠物"的意图：进程被系统/ROM 杀掉后没有任何回调，
+        // 下次打开 App 就靠这个标志自动恢复（主动关闭会写 false）
+        (application as DeskPetApp).petRepository.setOverlayAutoResumeAsync(true)
         startService(
             Intent(this, PetOverlayService::class.java)
                 .putExtra(PetOverlayService.EXTRA_PET_ID, petId)
@@ -64,6 +67,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopOverlay() {
+        // 用户主动关闭：清掉恢复意图，之后打开 App 不再自动拉起
+        (application as DeskPetApp).petRepository.setOverlayAutoResumeAsync(false)
         stopService(Intent(this, PetOverlayService::class.java))
     }
 
@@ -106,6 +111,9 @@ class MainActivity : ComponentActivity() {
         // 否则 effect 只创建一次，捕获到的 activeId 还停留在首次组合时的 null）
         val latestActiveId by rememberUpdatedState(activeId)
         val latestPendingStart by rememberUpdatedState(pendingStart)
+        val autoResume by repo.overlayAutoResume().collectAsStateWithLifecycle(false)
+        val latestAutoResume by rememberUpdatedState(autoResume)
+        val latestOverlayRunning by rememberUpdatedState(overlayRunning)
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         DisposableEffect(lifecycle) {
             val observer = LifecycleEventObserver { _, event ->
@@ -120,6 +128,18 @@ class MainActivity : ComponentActivity() {
                             requestNotificationPermissionIfNeeded()
                             startOverlay(it)
                         }
+                    }
+                }
+                // 自动恢复：上次是"想看"状态但进程已被系统/ROM 杀掉
+                //（悬浮窗服务死亡时无回调，只有意图标志还留着 true）。
+                // 运行中（running != null）或用户已主动关闭（标志 false）都不动
+                if (event == Lifecycle.Event.ON_RESUME && !latestPendingStart &&
+                    latestAutoResume && latestOverlayRunning == null &&
+                    Settings.canDrawOverlays(this@MainActivity)
+                ) {
+                    latestActiveId?.let {
+                        requestNotificationPermissionIfNeeded()
+                        startOverlay(it)
                     }
                 }
             }
@@ -274,6 +294,13 @@ class MainActivity : ComponentActivity() {
                     Text("💡 小提示", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
                     Text("• 每只宠物的位置和大小独立记忆\n• 长按宠物栏卡片可删除宠物\n• 点开底部收纳坞可调大小、导入和备份\n• 划掉本应用不影响宠物显示，关闭请用通知栏或收纳坞\n• 换手机时用备份恢复功能迁移\n• 宠物不含网络权限，纯本地运行")
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // 部分国产 ROM 会把前台服务一起清掉，给用户自救路径
+                    Text("⚠️ 小米/OPPO/vivo 等机型注意", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(4.dp))
+                    Text("部分手机系统在「清理后台」时会连同宠物一起关闭（系统限制，所有悬浮窗应用都一样）。解决办法：\n1. 最近任务界面长按/下拉本应用卡片，点 🔒 锁定\n2. 设置 → 应用 → 桌面宠物 → 省电策略选「无限制」\n3. 允许「自启动」\n万一宠物被清掉，重新打开本应用会自动恢复。")
                 }
             },
             confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
