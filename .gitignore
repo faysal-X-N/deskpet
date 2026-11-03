@@ -10,3 +10,4 @@ local.properties
 *.keystore
 /secrets/
 /.sisyphus/
+/.workbuddy/

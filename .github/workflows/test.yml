@@ -25,25 +25,65 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      # 本仓库 wrapper 指向阿里云镜像（国内下载快），CI 上换回官方地址。
+      # 直接整行替换 distributionUrl，镜像地址怎么变都不会失效。
       - name: Use official Gradle distribution
         run: |
-          sed -i 's|mirrors\.aliyun\.com/github/releases/gradle/gradle-distributions/v8\.13\.0/gradle-8\.13-bin\.zip|services.gradle.org/distributions/gradle-8.13-bin.zip|' gradle/wrapper/gradle-wrapper.properties
+          sed -i 's|^distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip|' gradle/wrapper/gradle-wrapper.properties
 
       - name: Run unit tests
         run: chmod +x gradlew && ./gradlew testDebugUnitTest
 
+      - name: Run Android lint
+        run: ./gradlew lintDebug
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Upload APK (always)
+      - name: Decode signing keystore (if configured)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/deskpet.keystore"
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/deskpet.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::SIGNING_KEYSTORE_BASE64 未配置，发布将使用未签名/debug APK"
+          fi
+
+      - name: Build release APK (R8)
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Upload debug APK (always)
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Upload release APK (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/app-release*.apk
+
+      - name: Pick APK to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/deskpet-release.apk"
+          else
+            echo "::warning::无正式签名 release APK，回退为 debug 签名 APK 发布"
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/deskpet-release.apk"
+          fi
+
       - name: Create GitHub Release (on tag push)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: ${{ runner.temp }}/deskpet-release.apk
           generate_release_notes: true
