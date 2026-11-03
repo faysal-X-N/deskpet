@@ -266,12 +266,13 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         super.onDestroy()
     }
 
-    /** 注意：Manifest 里 stopWithTask="true"，划掉任务时系统直接停服务、本方法不会被回调；
-     *  位置保存由 onDestroy 兜底。保留本方法仅作为 stopWithTask 行为变化时的双保险。 */
+    /** Manifest 里 stopWithTask="false"（悬浮窗应用标准做法）：划掉最近任务
+     *  只关 App 界面，本服务带着宠物继续显示，本方法在划掉时回调——只做
+     *  位置落盘这类收尾，绝不 stopSelf（否则配置白改、宠物照样消失）。
+     *  关闭路径 = 通知栏「关闭宠物」/ 收纳坞开关 / 用户强停。 */
     override fun onTaskRemoved(r: Intent?) {
         super.onTaskRemoved(r)
         persistPositionAsync()
-        stopSelf()
     }
 
     /** 在独立 IO 作用域异步保存位置，服务销毁后仍能完成写入 */

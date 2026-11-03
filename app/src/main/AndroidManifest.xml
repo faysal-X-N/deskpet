@@ -36,8 +36,11 @@
             android:name=".overlay.PetOverlayService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
-            android:stopWithTask="true">
-            <!-- Google Play 要求为 specialUse 类型说明用途 -->
+            android:stopWithTask="false">
+            <!-- stopWithTask=false（悬浮窗应用标准做法，Localazy 悬浮窗系列/
+                 音乐/打车类应用同款）：划掉最近任务只关 App 界面，宠物由
+                 前台服务带着继续显示；关闭走通知栏"关闭宠物"或收纳坞。
+                 前台服务+常驻通知是合规存活方式，不做黑科技保活 -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Floating pet overlay that the user explicitly starts and that stays visible above other apps while enabled" />

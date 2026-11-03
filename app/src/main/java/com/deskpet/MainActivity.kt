@@ -273,7 +273,7 @@ class MainActivity : ComponentActivity() {
                     // 提示
                     Text("💡 小提示", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
-                    Text("• 每只宠物的位置和大小独立记忆\n• 长按宠物栏卡片可删除宠物\n• 点开底部收纳坞可调大小、导入和备份\n• 换手机时用备份恢复功能迁移\n• 宠物不含网络权限，纯本地运行")
+                    Text("• 每只宠物的位置和大小独立记忆\n• 长按宠物栏卡片可删除宠物\n• 点开底部收纳坞可调大小、导入和备份\n• 划掉本应用不影响宠物显示，关闭请用通知栏或收纳坞\n• 换手机时用备份恢复功能迁移\n• 宠物不含网络权限，纯本地运行")
                 }
             },
             confirmButton = { TextButton(onClick = onDismiss) { Text("知道了") } }
