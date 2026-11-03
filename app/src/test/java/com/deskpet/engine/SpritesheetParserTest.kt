@@ -24,7 +24,7 @@ class SpritesheetParserTest {
 
     @Test
     fun `getFrameCount uses custom state config when provided`() {
-        val customState = AnimationState(name = "idle", row = 0, frames = 12)
+        val customState = AnimationState(name = "idle", row = 0, frames = 7)
         val config = CodexPetConfig(
             id = "test",
             displayName = "Test",
@@ -32,7 +32,20 @@ class SpritesheetParserTest {
             states = listOf(customState)
         )
         val frameCount = parser.getFrameCount(config, PetAnimationState.IDLE)
-        assertEquals(12, frameCount)
+        assertEquals(7, frameCount)
+    }
+
+    @Test
+    fun `getFrameCount clamps declared frames to the 8-column grid width`() {
+        // 恶意/损坏 pet.json 声明 50 帧：一行最多 8 列，钳到 8 防列号越界
+        val customState = AnimationState(name = "idle", row = 0, frames = 50)
+        val config = CodexPetConfig(
+            id = "test",
+            displayName = "Test",
+            spritesheetPath = "/fake/test.webp",
+            states = listOf(customState)
+        )
+        assertEquals(8, parser.getFrameCount(config, PetAnimationState.IDLE))
     }
 
     @Test
