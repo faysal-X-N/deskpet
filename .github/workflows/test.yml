@@ -19,8 +19,14 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # 显式声明 packages：该 action 默认安装 tools platform-tools，
+      # 而 legacy tools 包已被 Google 从 SDK 仓库移除，新 runner 上必然报
+      # "Failed to find package 'tools'" 而失败。platform/build-tools 由
+      # Gradle 在构建时自动补装（licenses 已被 action 接受）。
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
