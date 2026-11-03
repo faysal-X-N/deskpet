@@ -50,6 +50,8 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     private var petId: String? = null
     private var job: Job? = null
     private var scaleJob: Job? = null
+    /** 捏合缩放回写 DataStore 的防抖任务 */
+    private var scaleSyncJob: Job? = null
     private var wx = 0f
     private var wy = 200f
     private var savedScale = 1f
@@ -112,6 +114,21 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         // 先更新尺寸（petWidth 状态同步生效），后续 clampPosition 才能用新尺寸
         // 把放大后的窗口夹回屏幕内，而不是放行一帧溢出
         anim.setScale(ns)
+        // 捏合缩放同步回 DataStore（防抖落盘，捏合过程中不写）：否则列表页
+        // 滑块还显示旧值，之后任意一次滑块微调会让宠物从捏合后的大小"瞬移"
+        // 回滑块值。observeScale 收到回写后差值≈0 不会回环
+        val pid = petId
+        if (pid != null && applied != 1f) {
+            scaleSyncJob?.cancel()
+            scaleSyncJob = sc.launch {
+                delay(400)
+                try {
+                    repo.setScale(pid, savedScale)
+                } catch (e: Exception) {
+                    Log.w(TAG, "scale sync failed", e)
+                }
+            }
+        }
         if (applied != 1f) {
             // 以双指中心（centroid）为锚点缩放：窗口尺寸从 W 变为 W*applied 时，
             // 把窗口左上角反向平移 focus*(1-applied)，手指夹住的点保持不动。
@@ -186,7 +203,14 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             val contentIntent = android.app.PendingIntent.getActivity(
                 this, 0,
                 Intent(this, com.deskpet.MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // NEW_TASK 保证服务里能启动 Activity；CLEAR_TOP|SINGLE_TOP
+                    // 复用已存在的实例走 onNewIntent——否则应用开着时点通知，
+                    // 返回栈里会再叠一个重复的列表页
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
                 },
                 android.app.PendingIntent.FLAG_IMMUTABLE
             )
@@ -215,6 +239,9 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         } catch (e: Exception) {
             Log.w(TAG, "startForeground failed", e)
             Toast.makeText(this@PetOverlayService, "前台服务失败: ${e.message}", Toast.LENGTH_LONG).show()
+            // 只 catch 不停服没用：系统 5 秒超时后仍会抛 RemoteServiceException
+            // （"did not then call startForeground"）直接崩溃，必须主动止损
+            stopSelf()
         }
     }
 
@@ -387,7 +414,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            // 用绝对方向 LEFT 而非 START：RTL 语言（阿拉伯语/希伯来语等）下
+            // START 会镜像成"距右边缘"，而 wx/clampPosition 全按左边缘计算——
+            // 宠物位置镜像错位、拖拽方向相反、夹取越界。LEFT 对任何 locale 稳定
+            gravity = Gravity.TOP or Gravity.LEFT
             x = wx.toInt()
             y = wy.toInt()
         }
