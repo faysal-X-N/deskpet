@@ -83,7 +83,6 @@ fun PetListScreen(
     onShowHelp: () -> Unit = {}
 ) {
     var deleteTarget by remember { mutableStateOf<String?>(null) }
-    var menuExpanded by remember { mutableStateOf(false) }
 
     deleteTarget?.let { id ->
         AlertDialog(
@@ -103,36 +102,16 @@ fun PetListScreen(
 
     Box(Modifier.fillMaxSize().statusBarsPadding()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    if (!isLoading && petList.isNotEmpty()) {
-                        Text(
-                            "${petList.size} 只宠物 · " + if (isOverlayRunning) "运行中" else "未开启",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onImportClick) {
-                        Icon(Icons.Default.Add, "导入", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    IconButton(onClick = onShowHelp) {
-                        Icon(Icons.Default.Info, "帮助", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, "更多", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text("💾 备份全部") },
-                                onClick = { menuExpanded = false; onBackupAll() },
-                                leadingIcon = { Icon(Icons.Default.Share, null) }
-                            )
-                        }
-                    }
+            // 顶栏（M3 规范："app bar 最多 1-2 个操作，能不用溢出菜单就不用，
+            // 操作多就放进 toolbar"）：本页所有操作都在底部收纳坞，顶栏零图标
+            Column(Modifier.weight(1f, fill = false)) {
+                Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (!isLoading && petList.isNotEmpty()) {
+                    Text(
+                        "${petList.size} 只宠物 · " + if (isOverlayRunning) "运行中" else "未开启",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -154,11 +133,21 @@ fun PetListScreen(
                         Text("还没有宠物", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "点击右上角「导入」添加\n长按宠物可删除",
+                            "从本地素材包或 GIF 导入\n长按宠物可删除",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
                         )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = onImportClick,
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("导入宠物")
+                        }
                     }
                 }
             }
@@ -187,15 +176,21 @@ fun PetListScreen(
         }
 
         // 底部收纳坞（FloatingToolbar 模式）：滑块与开关默认收进一条药丸，
-        // 点按展开。列表数据未读出前不渲染（activeId 可能先于列表到达，
-        // 否则滑块先按 100% 渲染、数据到达后再跳，启动瞬间会跳一下）
-        if (activePetId != null && !isLoading) {
+        // 点按展开。次要操作（导入/帮助/备份）也住在坞里（M3：操作多就放
+        // toolbar，别堆顶栏）。只要有宠物就显示；列表数据未读出前不渲染
+        // （activeId 可能先于列表到达，否则滑块先按 100% 渲染、数据到达后
+        // 再跳，启动瞬间会跳一下）
+        if (petList.isNotEmpty() && !isLoading) {
             PetDock(
                 isRunning = isOverlayRunning,
+                canStart = activePetId != null,
                 curScale = curScale,
                 onStartOverlay = onStartOverlay,
                 onStopOverlay = onStopOverlay,
                 onScaleChange = onScaleChange,
+                onImportClick = onImportClick,
+                onShowHelp = onShowHelp,
+                onBackupAll = onBackupAll,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -221,10 +216,14 @@ fun PetListScreen(
 @Composable
 private fun PetDock(
     isRunning: Boolean,
+    canStart: Boolean,
     curScale: Float,
     onStartOverlay: () -> Unit,
     onStopOverlay: () -> Unit,
     onScaleChange: (Float) -> Unit,
+    onImportClick: () -> Unit = {},
+    onShowHelp: () -> Unit = {},
+    onBackupAll: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -388,13 +387,21 @@ private fun PetDock(
                     } else {
                         Button(
                             onClick = onStartOverlay,
+                            enabled = canStart,
                             modifier = Modifier.fillMaxWidth().height(46.dp),
                             shape = RoundedCornerShape(16.dp)
                         ) {
                             Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("开启宠物")
+                            Text(if (canStart) "开启宠物" else "先选择一只宠物")
                         }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // 次要操作行（M3：低频操作放 toolbar，安静的文字按钮）
+                    Row(Modifier.fillMaxWidth()) {
+                        DockAction(Icons.Default.Add, "导入") { onImportClick() }
+                        DockAction(Icons.Default.Info, "帮助") { onShowHelp() }
+                        DockAction(Icons.Default.Share, "备份全部") { onBackupAll() }
                     }
                 }
             }
@@ -418,6 +425,24 @@ private fun StepButton(symbol: String, desc: String, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+/** 收纳坞展开面板里的安静文字按钮（次要操作：导入/帮助/备份） */
+@Composable
+private fun RowScope.DockAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    ) {
+        Icon(icon, null, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
     }
 }
 
