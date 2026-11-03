@@ -18,14 +18,17 @@ object SamplePetLoader {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun loadSamplePets(context: Context, petRepository: PetRepository) {
-        val allPets = petRepository.getAllPets().first()
-        if (allPets.isNotEmpty()) return  // 已经加载过，跳过
+        // 用持久化标记判断，而不是"列表为空"：
+        // 1) pet_list JSON 解析失败时列表为空，不标记就会把示例宠物重复导入一遍
+        // 2) 用户主动删光所有宠物后，也不应该让示例宠物复活
+        if (petRepository.samplesLoaded().first()) return
 
         withContext(Dispatchers.IO) {
             try {
                 val assetsPetsDir = "pets"
                 val assetList = context.assets.list(assetsPetsDir) ?: return@withContext
                 val internalPetsDir = File(context.filesDir, "pets").also { it.mkdirs() }
+                var loadedCount = 0
 
                 for (petName in assetList) {
                     try {
@@ -56,12 +59,20 @@ object SamplePetLoader {
                             type = PetType.CODEX_PET,
                             displayName = config.displayName,
                             petJsonPath = File(destDir, "pet.json").absolutePath,
-                            spritesheetPath = spritesheetFile.absolutePath
+                            spritesheetPath = spritesheetFile.absolutePath,
+                            // 记录 sourceId，导入同一只示例宠物时才能被重复检测拦下
+                            sourceId = config.id
                         )
                         petRepository.addPetDirect(petInfo)
+                        loadedCount++
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to load sample pet: $petName", e)
                     }
+                }
+
+                // 只要成功导入过一只（或 assets 本来就没有示例）就打标记，避免反复重试
+                if (loadedCount > 0 || assetList.isEmpty()) {
+                    petRepository.setSamplesLoaded()
                 }
 
                 val allPets = petRepository.getAllPets().first()

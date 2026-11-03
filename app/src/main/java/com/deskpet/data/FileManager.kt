@@ -15,7 +15,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 class FileManager(private val context: Context) {
@@ -24,6 +23,13 @@ class FileManager(private val context: Context) {
         get() = File(context.filesDir, "pets").also { it.mkdirs() }
 
     private val json = Json { ignoreUnknownKeys = true }
+    private val zipExtractor = ZipExtractor()
+
+    companion object {
+        private const val TAG = "FileManager"
+        private const val MAX_GIF_BYTES = 10L * 1024 * 1024
+        private const val TMP_STALE_MS = 24L * 60 * 60 * 1000
+    }
 
     // ===== Import =====
 
@@ -31,10 +37,12 @@ class FileManager(private val context: Context) {
         val id = java.util.UUID.randomUUID().toString()
         val destDir = File(petDir, id).also { it.mkdirs() }
         return try {
-            context.contentResolver.openInputStream(uri)?.use { extractZip(it, destDir) }
+            context.contentResolver.openInputStream(uri)?.use { zipExtractor.extract(it, destDir) }
                 ?: throw ImportException.FileNotFound("无法打开文件")
-            val petJsonFile = File(destDir, "pet.json")
-            if (!petJsonFile.exists()) throw ImportException.InvalidFormat("缺少 pet.json 文件")
+            val petJsonFile = findPetJson(destDir)
+                ?: throw ImportException.InvalidFormat("缺少 pet.json 文件")
+            // 防 OOM：pet.json 正常只有几 KB；恶意 zip 塞一个巨大 JSON 进来 readText 会直接内存溢出
+            if (!ZipExtractor.isPetJsonSizeOk(petJsonFile)) throw ImportException.InvalidFormat("pet.json 文件过大")
             val config: CodexPetConfig = try {
                 json.decodeFromString(petJsonFile.readText())
             } catch (e: Exception) {
@@ -50,20 +58,24 @@ class FileManager(private val context: Context) {
     }
 
     suspend fun importGif(uri: Uri): PetInfo {
+        // 清理历史孤儿 .tmp：复制中途进程被杀会留下 tmp 文件，永久累积
+        cleanupStaleTmpFiles()
         val id = java.util.UUID.randomUUID().toString()
         val destFile = File(petDir, "$id.gif")
         val tmpFile = File(petDir, "$id.tmp")
+        // 文件名要从 ContentResolver 查；uri.lastPathSegment 在不少机型上是 "msf:1000000123" 这种 ID
+        val fileName = queryDisplayName(uri)
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "pet.gif"
         return try {
             context.contentResolver.openInputStream(uri)?.use { input ->
-                tmpFile.outputStream().use { output -> input.copyTo(output) }
+                ZipExtractor.copyWithLimit(input, tmpFile, MAX_GIF_BYTES)
             } ?: throw ImportException.FileNotFound("无法打开文件")
-            if (!isGifFormat(tmpFile)) throw ImportException.InvalidFormat("所选文件不是 GIF 格式")
-            if (tmpFile.length() > 10L * 1024 * 1024)
-                throw ImportException.FileTooLarge(tmpFile.length() / 1024 / 1024, 10)
+            if (!ZipExtractor.isGifFile(tmpFile)) throw ImportException.InvalidFormat("所选文件不是 GIF 格式")
             if (!tmpFile.renameTo(destFile)) { tmpFile.delete(); throw ImportException.ExtractionFailed(RuntimeException("无法移动文件")) }
-            val fileName = uri.lastPathSegment ?: "unknown.gif"
+            // sourceId = 文件名 + 字节数：两个内容不同但同名的 GIF 不会被误判为重复
             PetInfo(id = id, type = PetType.GIF, displayName = fileName, spritesheetPath = destFile.absolutePath,
-                sourceId = uri.lastPathSegment ?: "")
+                sourceId = "$fileName:${destFile.length()}")
         } catch (e: ImportException) { destFile.delete(); tmpFile.delete(); throw e }
         catch (e: Exception) { destFile.delete(); tmpFile.delete(); throw ImportException.ExtractionFailed(e) }
     }
@@ -123,43 +135,66 @@ class FileManager(private val context: Context) {
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
             val tmpDir = File(context.cacheDir, "restore_tmp").also { it.deleteRecursively(); it.mkdirs() }
             try {
-                extractZip(inputStream, tmpDir)
+                zipExtractor.extract(inputStream, tmpDir)
                 val jsonFile = File(tmpDir, "pets.json")
                 if (jsonFile.exists()) {
-                    val petList: List<PetInfo> = json.decodeFromString(jsonFile.readText())
+                    val petList: List<PetInfo> = try {
+                        json.decodeFromString(jsonFile.readText())
+                    } catch (e: Exception) {
+                        throw ImportException.InvalidFormat("pets.json 解析失败：${e.message}")
+                    }
                     val petsDir = File(context.filesDir, "pets").also { it.mkdirs() }
+                    val petsBase = petsDir.canonicalPath
                     petList.forEach { pet ->
                         // 去重：已存在的 ID 跳过
                         if (petRepository.getPet(pet.id) != null) return@forEach
-                        val destDir = File(petsDir, pet.id).also { it.mkdirs() }
+                        // 安全校验：id 来自备份 JSON（外部输入），含路径分隔符或 ".." 时可写穿
+                        // 到应用私有目录任意位置（如 shared_prefs），必须拒绝
+                        if (!ZipExtractor.isSafePetId(pet.id)) return@forEach
+                        val destDir = File(petsDir, pet.id)
+                        if (!destDir.canonicalPath.startsWith(petsBase + File.separator)) return@forEach
+                        destDir.mkdirs()
                         val srcDir = File(tmpDir, "pets/${pet.id}")
                         if (srcDir.exists()) {
-                            srcDir.listFiles()?.forEach { it.copyTo(File(destDir, it.name), true) }
+                            // copyRecursively 支持嵌套子目录；copyTo 遇到目录会抛 FileNotFoundException。
+                            // 它返回 Boolean 且默认策略是静默跳过失败项——磁盘满时会"恢复成功"但文件缺失，
+                            // 所以必须检查返回值
+                            if (!srcDir.copyRecursively(destDir, true)) {
+                                destDir.deleteRecursively()
+                                throw ImportException.ExtractionFailed(RuntimeException("恢复宠物 ${pet.id} 的文件时失败（存储空间不足？）"))
+                            }
                         }
                         val fixedPet = pet.copy(
-                            petJsonPath = File(destDir, "pet.json").takeIf { it.exists() }?.absolutePath,
+                            petJsonPath = findPetJson(destDir)?.absolutePath,
                             spritesheetPath = findSpritesheet(destDir)?.absolutePath ?: pet.spritesheetPath
                         )
                         petRepository.addPetDirect(fixedPet)
                     }
                 } else {
-                    val petJsonFile = File(tmpDir, "pet.json")
-                    if (petJsonFile.exists()) {
-                        val id = java.util.UUID.randomUUID().toString()
-                        val destDir = File(context.filesDir, "pets/$id").also { it.mkdirs() }
-                        tmpDir.listFiles()?.forEach { it.copyTo(File(destDir, it.name), true) }
-                        val spritesheetFile = findSpritesheet(destDir)
-                        if (spritesheetFile != null) {
-                            val config: CodexPetConfig = json.decodeFromString(petJsonFile.readText())
-                            petRepository.addPetDirect(PetInfo(id = id, type = PetType.CODEX_PET,
-                                displayName = config.displayName,
-                                petJsonPath = File(destDir, "pet.json").absolutePath,
-                                spritesheetPath = spritesheetFile.absolutePath))
-                        }
+                    val petJsonFile = findPetJson(tmpDir)
+                    if (petJsonFile == null) {
+                        // 之前这里静默返回，用户会看到"恢复完成"但其实什么都没做
+                        throw ImportException.InvalidFormat("不是有效的备份文件（缺少 pets.json）")
                     }
+                    if (!ZipExtractor.isPetJsonSizeOk(petJsonFile)) throw ImportException.InvalidFormat("pet.json 文件过大")
+                    val id = java.util.UUID.randomUUID().toString()
+                    val destDir = File(context.filesDir, "pets/$id").also { it.mkdirs() }
+                    tmpDir.copyRecursively(destDir, true)
+                    val spritesheetFile = findSpritesheet(destDir)
+                        ?: throw ImportException.InvalidFormat("备份中缺少 spritesheet")
+                    val config: CodexPetConfig = try {
+                        json.decodeFromString(petJsonFile.readText())
+                    } catch (e: Exception) {
+                        throw ImportException.InvalidFormat("pet.json 解析失败：${e.message}")
+                    }
+                    petRepository.addPetDirect(PetInfo(id = id, type = PetType.CODEX_PET,
+                        displayName = config.displayName,
+                        petJsonPath = petJsonFile.copyTo(File(destDir, "pet.json"), true).absolutePath,
+                        spritesheetPath = spritesheetFile.absolutePath,
+                        sourceId = config.id))
                 }
             } finally { tmpDir.deleteRecursively() }
-        }
+        } ?: throw ImportException.FileNotFound("无法打开文件")
     }
 
     fun shareZip(zipFile: File) {
@@ -167,10 +202,9 @@ class FileManager(private val context: Context) {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(intent, "导出宠物"))
-        zipFile.deleteOnExit()
     }
 
     // ===== Helpers =====
@@ -180,6 +214,8 @@ class FileManager(private val context: Context) {
         if (dir != null && dir.exists()) {
             dir.walkTopDown().forEach { file ->
                 if (file == dir) return@forEach
+                // 缩略图缓存只在列表页用，不打包进导出/备份 zip（体积浪费）
+                if (file.name.startsWith("thumb")) return@forEach
                 val entryName = (prefix + dir.toPath().relativize(file.toPath()).toString())
                     .replace('\\', '/')
                 if (file.isDirectory) {
@@ -205,19 +241,15 @@ class FileManager(private val context: Context) {
         return json.encodeToString(kotlinx.serialization.builtins.ListSerializer(PetInfo.serializer()), petList)
     }
 
-    private fun extractZip(inputStream: InputStream, destDir: File) {
-        val base = destDir.canonicalPath
-        ZipInputStream(inputStream).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val file = File(destDir, entry.name)
-                if (!file.canonicalPath.startsWith(base + File.separator) && file.canonicalPath != base)
-                    throw ImportException.InvalidFormat("压缩包包含非法路径：${entry.name}")
-                if (entry.isDirectory) file.mkdirs()
-                else { file.parentFile?.mkdirs(); file.outputStream().use { zis.copyTo(it) } }
-                zis.closeEntry(); entry = zis.nextEntry
-            }
-        }
+    private fun queryDisplayName(uri: Uri): String? = try {
+        context.contentResolver.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null, null, null
+        )?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null }
+    } catch (e: Exception) {
+        Log.w(TAG, "query display name failed", e)
+        null
     }
 
     private fun findSpritesheet(dir: File): File? {
@@ -232,10 +264,18 @@ class FileManager(private val context: Context) {
         return null
     }
 
-    private fun isGifFormat(file: File): Boolean {
-        val header = ByteArray(6)
-        file.inputStream().use { if (it.read(header) < 6) return false }
-        return header.contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61))
-            || header.contentEquals(byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61))
+    /** 递归查找 pet.json——很多素材包 zip 会在根目录套一层文件夹 */
+    private fun findPetJson(dir: File): File? {
+        File(dir, "pet.json").takeIf { it.exists() }?.let { return it }
+        dir.listFiles()?.filter { it.isDirectory }?.forEach { child ->
+            findPetJson(child)?.let { return it }
+        }
+        return null
+    }
+
+    /** 删除超过 24 小时的 .tmp 残留（正在进行的导入不会超过这个时限） */
+    private fun cleanupStaleTmpFiles() {
+        petDir.listFiles { f -> f.name.endsWith(".tmp") && System.currentTimeMillis() - f.lastModified() > TMP_STALE_MS }
+            ?.forEach { it.delete() }
     }
 }

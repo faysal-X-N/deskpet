@@ -25,6 +25,9 @@ class InMemoryPetStore : IPetStore {
     private val _isFirstLaunch = MutableStateFlow(true)
     override val isFirstLaunch: Flow<Boolean> = _isFirstLaunch.asStateFlow()
 
+    private val _samplesLoaded = MutableStateFlow(false)
+    override val samplesLoaded: Flow<Boolean> = _samplesLoaded.asStateFlow()
+
     override suspend fun updatePetList(list: List<PetInfo>) {
         _petList.value = list
     }
@@ -35,6 +38,10 @@ class InMemoryPetStore : IPetStore {
 
     override suspend fun setFirstLaunchDone() {
         _isFirstLaunch.value = false
+    }
+
+    override suspend fun setSamplesLoaded() {
+        _samplesLoaded.value = true
     }
 }
 
