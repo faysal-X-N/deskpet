@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 橘团自适应图标：前景/单色层用位图（AI 生成形象，各密度 PNG），
+     底色取生成图奶油色；monochrome 复用前景的 alpha，系统自动着色 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-    <monochrome android:drawable="@drawable/ic_launcher_foreground"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>

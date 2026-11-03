@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#6750A4</color>
+    <!-- 桌面图标底色：泛洪统一后的奶油色（与图标资源严格同值，无接缝） -->
+    <color name="ic_launcher_background">#FDEDD4</color>
 </resources>
