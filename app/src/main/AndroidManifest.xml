@@ -4,12 +4,16 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+ 显示前台服务常驻通知所需 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".DeskPetApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:hardwareAccelerated="true"
-        android:label="桌面宠物"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.DeskPet"
         android:icon="@mipmap/ic_launcher">
@@ -28,7 +32,12 @@
             android:name=".overlay.PetOverlayService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
-            android:stopWithTask="true" />
+            android:stopWithTask="true">
+            <!-- Google Play 要求为 specialUse 类型说明用途 -->
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating pet overlay that the user explicitly starts and that stays visible above other apps while enabled" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

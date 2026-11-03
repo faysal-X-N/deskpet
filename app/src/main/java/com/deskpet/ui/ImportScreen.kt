@@ -1,6 +1,7 @@
 package com.deskpet.ui
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.deskpet.data.FileManager
 import com.deskpet.data.PetRepository
 import com.deskpet.data.model.ImportException
+import com.deskpet.data.model.PetInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,54 +32,45 @@ fun ImportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var isImporting by remember { mutableStateOf(false) }
 
-    val codexPetLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let {
-            scope.launch {
-                isImporting = true
-                try {
-                    val petInfo = fileManager.importCodexPet(it)
-                    if (petRepository.existsBySourceId(petInfo.sourceId)) {
-                        snackbarHostState.showSnackbar("该宠物已存在")
-                        isImporting = false
-                        return@launch
-                    }
-                    petRepository.addPet(petInfo)
-                    petRepository.setActivePet(petInfo.id)
-                    onImportSuccess()
-                } catch (e: ImportException) {
-                    snackbarHostState.showSnackbar(e.message ?: "导入失败")
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("导入失败：${e.message}")
-                } finally {
-                    isImporting = false
+    BackHandler(enabled = !isImporting) { onDismiss() }
+
+    /**
+     * 统一的导入流程。
+     * 注意：addPet() 会生成新的 UUID，之后必须用**返回的** pet 设置选中，
+     * 否则 activePetId 指向一个不存在的 id，界面上点「开启」会什么都不发生。
+     */
+    fun runImport(uri: Uri, importer: suspend (Uri) -> PetInfo) {
+        scope.launch {
+            isImporting = true
+            try {
+                // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
+                val imported = withContext(Dispatchers.IO) { importer(uri) }
+                if (petRepository.existsBySourceId(imported.sourceId)) {
+                    // 文件已经解压到磁盘了，重复导入要把它们清掉，避免残留
+                    withContext(Dispatchers.IO) { fileManager.deletePet(imported) }
+                    snackbarHostState.showSnackbar("该宠物已存在")
+                    return@launch
                 }
+                val added = petRepository.addPet(imported)
+                petRepository.setActivePet(added.id)
+                snackbarHostState.showSnackbar("导入成功：${added.displayName}")
+                onImportSuccess()
+            } catch (e: ImportException) {
+                snackbarHostState.showSnackbar(e.message ?: "导入失败")
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar("导入失败：${e.message}")
+            } finally {
+                isImporting = false
             }
         }
     }
 
+    val codexPetLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { runImport(it) { u -> fileManager.importCodexPet(u) } }
+    }
+
     val gifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let {
-            scope.launch {
-                isImporting = true
-                try {
-                    val petInfo = fileManager.importGif(it)
-                    if (petRepository.existsBySourceId(petInfo.sourceId)) {
-                        snackbarHostState.showSnackbar("该宠物已存在")
-                        isImporting = false
-                        return@launch
-                    }
-                    petRepository.addPet(petInfo)
-                    petRepository.setActivePet(petInfo.id)
-                    onImportSuccess()
-                } catch (e: ImportException) {
-                    snackbarHostState.showSnackbar(e.message ?: "导入失败")
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("导入失败：${e.message}")
-                } finally {
-                    isImporting = false
-                }
-            }
-        }
+        uri?.let { runImport(it) { u -> fileManager.importGif(u) } }
     }
 
     val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -85,10 +78,11 @@ fun ImportScreen(
             scope.launch {
                 isImporting = true
                 try {
-                    val fm = FileManager(context)
-                    withContext(Dispatchers.IO) { fm.restoreFromBackup(it, petRepository) }
+                    withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
                     snackbarHostState.showSnackbar("恢复完成")
                     onImportSuccess()
+                } catch (e: ImportException) {
+                    snackbarHostState.showSnackbar(e.message ?: "恢复失败")
                 } catch (e: Exception) {
                     snackbarHostState.showSnackbar("恢复失败：${e.message}")
                 } finally {
@@ -100,7 +94,7 @@ fun ImportScreen(
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            Modifier.fillMaxSize().padding(padding).statusBarsPadding().padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -115,7 +109,7 @@ fun ImportScreen(
             Spacer(Modifier.height(32.dp))
 
             Button(
-                onClick = { codexPetLauncher.launch(arrayOf("application/zip", "*/*")) },
+                onClick = { codexPetLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 enabled = !isImporting
             ) { Text("🎨 导入 Codex Pet 素材包") }

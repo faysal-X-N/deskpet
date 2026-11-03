@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 只暴露导出用的缓存目录；宠物数据在 filesDir，不应通过 FileProvider 分享 -->
 <paths>
-    <cache-path name="cache" path="." />
-    <files-path name="files" path="." />
+    <cache-path name="exports" path="." />
 </paths>
