@@ -399,14 +399,48 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     }
 
     private fun clampPosition() {
-        val p = displaySize()
+        // 安全区夹取（与主界面 safeDrawing 同一病根的悬浮窗版）：本窗口带
+        // FLAG_LAYOUT_NO_LIMITS，可以画进状态栏/导航条/挖孔底下——底部是
+        // 系统手势区（拖宠物的手势会被抢走）、挖孔会遮宠物。用
+        // currentWindowMetrics.windowInsets 取显示区域的安全边距（它报告
+        // 的是显示器自身的 insets，不受本窗口 NO_LIMITS 影响）；API < 30
+        // 没有此 API，回退为旧行为（全屏边界）。垂直方向完全收进安全区，
+        // 水平方向保留"露把手"的部分出屏玩法
+        val sb = safeBounds()
         val w = anim.petWidth.value
         val h = anim.petHeight.value
-        // 允许宠物留一部分在屏幕外，但必须留出"把手"能拖回来。
+        // 允许宠物左右留一部分在屏幕外，但必须留出"把手"能拖回来。
         // 旧代码硬编码 32px，高分屏（3x 密度）上只有约 10dp，几乎抓不住。
         val margin = 24f * resources.displayMetrics.density
-        wx = wx.coerceIn((-w + margin), (p.x - margin))
-        wy = wy.coerceIn(0f, (p.y - h / 2f).coerceAtLeast(0f))
+        wx = wx.coerceIn((sb.left - w + margin), (sb.right - margin))
+        wy = wy.coerceIn(sb.top.toFloat(), (sb.bottom - h).toFloat().coerceAtLeast(sb.top.toFloat()))
+    }
+
+    /** 安全区矩形（扣除系统栏 + 挖孔）。API 30+ 精确；旧版本回退全屏。 */
+    private fun safeBounds(): android.graphics.Rect {
+        val b = displayBounds()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val types = android.view.WindowInsets.Type.systemBars() or
+                android.view.WindowInsets.Type.displayCutout()
+            val ins = wm.currentWindowMetrics.windowInsets.getInsets(types)
+            return android.graphics.Rect(
+                b.left + ins.left, b.top + ins.top,
+                b.right - ins.right, b.bottom - ins.bottom
+            )
+        }
+        return b
+    }
+
+    /** 当前旋转下的显示区域边界（区分于 displaySize() 的宽高形式） */
+    private fun displayBounds(): android.graphics.Rect {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            wm.currentWindowMetrics.bounds
+        } else {
+            val p = Point()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getSize(p)
+            android.graphics.Rect(0, 0, p.x, p.y)
+        }
     }
 
     /** API 30+ 用 currentWindowMetrics（跟随当前旋转）；旧版本回退 defaultDisplay。
