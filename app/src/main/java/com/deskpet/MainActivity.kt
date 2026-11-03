@@ -130,7 +130,11 @@ class MainActivity : ComponentActivity() {
         if (isFirstLaunch == true || showHelp) {
             WelcomeGuide {
                 // 只有真正的首次启动弹窗才清除首次标记；从 ❓ 按钮打开的帮助不应碰这个状态
-                if (isFirstLaunch == true) sc.launch { repo.setFirstLaunchDone() }
+                if (isFirstLaunch == true) sc.launch {
+                    // 首次标记写失败（磁盘满等）不能闪退，下次启动重弹欢迎页可接受
+                    runCatching { repo.setFirstLaunchDone() }
+                        .onFailure { Log.e("MainActivity", "setFirstLaunchDone failed", it) }
+                }
                 showHelp = false
             }
         }
@@ -145,7 +149,9 @@ class MainActivity : ComponentActivity() {
                 isOverlayRunning = overlayRunning,
                 curScale = curScale,
                 onPetSelected = { id ->
-                    sc.launch { repo.setActivePet(id) }
+                    // 写盘失败（存储异常/磁盘满）不闪退：UI 由数据流驱动，写失败列表不变
+                    sc.launch { runCatching { repo.setActivePet(id) }
+                        .onFailure { Log.e("MainActivity", "setActivePet failed", it) } }
                     // 已经显示中就直接切换，不用先关再开
                     if (overlayRunning && OverlayState.petId.value != id) startOverlay(id)
                 },
@@ -166,21 +172,36 @@ class MainActivity : ComponentActivity() {
                 onImportClick = { showImport = true },
                 onDeletePet = { id ->
                     sc.launch {
-                        val pet = repo.getPet(id)
-                        if (OverlayState.petId.value == id) stopOverlay()
-                        repo.deletePet(id)
-                        pet?.let { withContext(Dispatchers.IO) { FileManager(this@MainActivity).deletePet(it) } }
+                        try {
+                            val pet = repo.getPet(id)
+                            if (OverlayState.petId.value == id) stopOverlay()
+                            repo.deletePet(id)
+                            pet?.let { withContext(Dispatchers.IO) { FileManager(this@MainActivity).deletePet(it) } }
+                        } catch (e: Exception) {
+                            // 删除失败不闪退：列表不变、文件残留可下次再删
+                            Log.e("MainActivity", "deletePet failed", e)
+                            Toast.makeText(this@MainActivity, "删除失败：${e.message}", Toast.LENGTH_LONG).show()
+                        }
                     }
                 },
                 onScaleChange = { s ->
-                    activeId?.let { sc.launch { repo.setScale(it, s) } }
+                    activeId?.let {
+                        sc.launch { runCatching { repo.setScale(it, s) }
+                            .onFailure { e -> Log.e("MainActivity", "setScale failed", e) } }
+                    }
                 },
                 onExportPet = { pet ->
                     sc.launch {
-                        val fm = FileManager(this@MainActivity)
-                        val zip = withContext(Dispatchers.IO) { fm.exportPetToZip(pet) }
-                        if (zip != null) fm.shareZip(zip)
-                        else Toast.makeText(this@MainActivity, "导出失败", Toast.LENGTH_SHORT).show()
+                        try {
+                            val fm = FileManager(this@MainActivity)
+                            val zip = withContext(Dispatchers.IO) { fm.exportPetToZip(pet) }
+                            if (zip != null) fm.shareZip(zip)
+                            else Toast.makeText(this@MainActivity, "导出失败", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            // 分享目标缺失（ActivityNotFoundException）等也不闪退
+                            Log.e("MainActivity", "export failed", e)
+                            Toast.makeText(this@MainActivity, "导出失败：${e.message}", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 onBackupAll = {

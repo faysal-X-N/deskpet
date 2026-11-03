@@ -6,10 +6,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.deskpet.data.model.PetInfo
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -32,7 +34,19 @@ class PetStore(private val context: Context) : IPetStore {
     private val lastGoodLock = Any()
     private var lastGoodList: List<PetInfo>? = null
 
-    override val petListFlow: Flow<List<PetInfo>> = context.dataStore.data.map { prefs ->
+    /**
+     * 刁钻边界：DataStore 文件本身损坏（磁盘坏块/写入中途断电等）时，
+     * data 流会抛 IOException/CorruptionException——下面 map 里的 JSON catch
+     * 只能接解析错误，接不住上游流异常，所有收集方会连环崩溃，且每次冷启动
+     * 都崩直到用户清数据（"App 打不开"级别事故）。catch 后按空数据继续：
+     * App 可启动、用户可重新导入，下一次成功写入会重建文件。
+     */
+    private fun safeData(ds: DataStore<Preferences>) = ds.data.catch { e ->
+        Log.e("PetStore", "DataStore read failed, continuing with empty prefs", e)
+        emit(emptyPreferences())
+    }
+
+    override val petListFlow: Flow<List<PetInfo>> = safeData(context.dataStore).map { prefs ->
         val jsonStr = prefs[PET_LIST_KEY] ?: "[]"
         try {
             json.decodeFromString<List<PetInfo>>(jsonStr)
@@ -50,7 +64,7 @@ class PetStore(private val context: Context) : IPetStore {
         }
     }
 
-    override val activePetIdFlow: Flow<String?> = context.dataStore.data.map {
+    override val activePetIdFlow: Flow<String?> = safeData(context.dataStore).map {
         it[ACTIVE_PET_KEY]
     }
 
@@ -58,7 +72,7 @@ class PetStore(private val context: Context) : IPetStore {
         context.dataStore.edit { it[ACTIVE_PET_KEY] = id }
     }
 
-    override val isFirstLaunch: Flow<Boolean> = context.dataStore.data.map {
+    override val isFirstLaunch: Flow<Boolean> = safeData(context.dataStore).map {
         it[FIRST_LAUNCH_KEY] ?: true
     }
 
@@ -67,7 +81,7 @@ class PetStore(private val context: Context) : IPetStore {
     }
 
     /** 示例宠物是否已加载过。用标记而不是"列表为空"判断，否则 JSON 损坏或用户删光宠物后示例会复活 */
-    override val samplesLoaded: Flow<Boolean> = context.dataStore.data.map {
+    override val samplesLoaded: Flow<Boolean> = safeData(context.dataStore).map {
         it[SAMPLES_LOADED_KEY] ?: false
     }
 
