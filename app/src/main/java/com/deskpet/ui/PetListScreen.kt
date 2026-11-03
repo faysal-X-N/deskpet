@@ -165,11 +165,12 @@ fun PetListScreen(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 120.dp),
-                // 底部留出收纳坞的高度，最后一行卡片不被遮挡
-                contentPadding = PaddingValues(bottom = 96.dp),
+                // 网格先避让导航条，再留收纳坞的高度（坞=12dp 边距+约 44dp 药丸，
+                // 88dp 余量保证最后一行卡片在收纳态不被遮挡）
+                contentPadding = PaddingValues(bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().navigationBarsPadding()
             ) {
                 items(petList, key = { it.id }, contentType = { it.type }) { pet ->
                     PetGridCard(
