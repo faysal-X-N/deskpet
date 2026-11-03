@@ -3,8 +3,14 @@ package com.deskpet.ui
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -94,72 +101,41 @@ fun PetListScreen(
         )
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(12.dp)) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                if (!isLoading && petList.isNotEmpty()) {
-                    Text(
-                        "${petList.size} 只宠物 · " + if (isOverlayRunning) "运行中" else "未开启",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onImportClick) {
-                    Icon(Icons.Default.Add, "导入", tint = MaterialTheme.colorScheme.onSurface)
-                }
-                if (activePetId != null) {
-                    if (isOverlayRunning)
-                        FilledTonalButton(
-                            onClick = onStopOverlay,
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("关闭")
-                        }
-                    else
-                        Button(
-                            onClick = onStartOverlay,
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("开启")
-                        }
-                }
-                IconButton(onClick = onShowHelp) {
-                    Icon(Icons.Default.Info, "帮助", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, "更多", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("💾 备份全部") },
-                            onClick = { menuExpanded = false; onBackupAll() },
-                            leadingIcon = { Icon(Icons.Default.Share, null) }
+    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    if (!isLoading && petList.isNotEmpty()) {
+                        Text(
+                            "${petList.size} 只宠物 · " + if (isOverlayRunning) "运行中" else "未开启",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onImportClick) {
+                        Icon(Icons.Default.Add, "导入", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    IconButton(onClick = onShowHelp) {
+                        Icon(Icons.Default.Info, "帮助", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, "更多", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("💾 备份全部") },
+                                onClick = { menuExpanded = false; onBackupAll() },
+                                leadingIcon = { Icon(Icons.Default.Share, null) }
+                            )
+                        }
+                    }
+                }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-
-        // 列表数据未读出前不渲染滑块（activeId 可能先于列表到达，否则滑块先按 100% 渲染、
-        // 数据到达后再跳到真实值，启动瞬间会跳一下）
-        if (activePetId != null && !isLoading) {
-            ScaleCard(curScale = curScale, onScaleChange = onScaleChange)
-        }
+            Spacer(Modifier.height(8.dp))
 
         if (isLoading) {
             // 磁盘数据尚未读出：保持空白，避免"还没有宠物"空状态在启动瞬间闪现
@@ -189,7 +165,8 @@ fun PetListScreen(
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 120.dp),
-                contentPadding = PaddingValues(0.dp),
+                // 底部留出收纳坞的高度，最后一行卡片不被遮挡
+                contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
@@ -206,22 +183,50 @@ fun PetListScreen(
                 }
             }
         }
+        }
+
+        // 底部收纳坞（FloatingToolbar 模式）：滑块与开关默认收进一条药丸，
+        // 点按展开。列表数据未读出前不渲染（activeId 可能先于列表到达，
+        // 否则滑块先按 100% 渲染、数据到达后再跳，启动瞬间会跳一下）
+        if (activePetId != null && !isLoading) {
+            PetDock(
+                isRunning = isOverlayRunning,
+                curScale = curScale,
+                onStartOverlay = onStartOverlay,
+                onStopOverlay = onStopOverlay,
+                onScaleChange = onScaleChange,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
+            )
+        }
     }
 }
 
 /**
- * 宠物大小调节卡片。
+ * 底部收纳坞（调研结论）：M3 Expressive 的 FloatingToolbar 是 2026 官方推荐的
+ * "多操作收纳"组件——默认收成一条药丸、点按展开；其底层就是 AnimatedVisibility
+ * + 弹簧动画这套原语。本实现复刻同款交互而不引入 material3 1.5 的整链升级：
+ * 收纳态是一条状态药丸（运行点 + 百分比 + 旋转箭头），展开后露出滑块行与
+ * 全宽开关按钮。注：容器高度动画交给 expand/shrinkVertically，不再叠加
+ * animateContentSize——两套高度动画叠加会互相抖动。
  *
- * 状态逻辑（勿改回旧写法）：value 始终用本地 sliderValue；repo 变化经 LaunchedEffect
- * 同步进来、拖动中忽略。不能用 shown = if(dragging) local else repo——松手瞬间 repo
- * 还是旧值（DataStore 异步写未完成），滑块会先弹回旧位置再跳回来。
+ * 滑块状态逻辑（勿改回旧写法）：value 始终用本地 sliderValue；repo 变化经
+ * LaunchedEffect 同步进来、拖动中忽略。不能用 shown = if(dragging) local else
+ * repo——松手瞬间 repo 还是旧值（DataStore 异步写未完成），滑块会先弹回旧位置。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ScaleCard(
+private fun PetDock(
+    isRunning: Boolean,
     curScale: Float,
-    onScaleChange: (Float) -> Unit
+    onStartOverlay: () -> Unit,
+    onStopOverlay: () -> Unit,
+    onScaleChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    var expanded by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableFloatStateOf(curScale) }
     var dragging by remember { mutableStateOf(false) }
     LaunchedEffect(curScale) { if (!dragging) sliderValue = curScale }
@@ -234,93 +239,163 @@ private fun ScaleCard(
         }
     }
 
+    // 展开/收起、箭头旋转、圆角形变共用同一 M3 Expressive 弹簧节奏
+    val motion = spring<Float>(dampingRatio = 0.8f, stiffness = 380f)
+    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, motion)
+    val cornerRadius by animateDpAsState(
+        if (expanded) 24.dp else 28.dp,
+        spring(dampingRatio = 0.8f, stiffness = 380f)
+    )
+
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(cornerRadius),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 6.dp
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-            // 标签行：说明文字 + 实时百分比胶囊 + 恢复原始大小
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            // —— 收纳态表头（常显）：点按展开/收起 ——
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(
+                            if (isRunning) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                            CircleShape
+                        )
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    "宠物大小",
+                    if (isRunning) "运行中" else "未开启",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(Modifier.weight(1f))
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                ) {
-                    Text(
-                        "${(sliderValue * 100).roundToInt()}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { sliderValue = 1f; onScaleChange(1f) },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "恢复原始大小",
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    "${(sliderValue * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = if (expanded) "收起控制" else "展开控制",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.graphicsLayer { rotationZ = chevronRotation }
+                )
             }
-            // 调节行：[−] 滑块 [+]（M3：两端加减号辅助微调，触达性优于纯捏合）
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StepButton("−", "缩小") { nudge(-SCALE_STEP) }
-                Slider(
-                    value = sliderValue,
-                    onValueChange = { dragging = true; sliderValue = it },
-                    onValueChangeFinished = { dragging = false; onScaleChange(sliderValue) },
-                    valueRange = MIN_SCALE_UI..MAX_SCALE_UI,
-                    modifier = Modifier.weight(1f),
-                    thumb = {
-                        Box(
-                            Modifier
-                                .size(20.dp)
-                                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+
+            // —— 展开内容：滑块行 + 全宽开关按钮 ——
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(motion) + expandVertically(
+                    spring(dampingRatio = 0.8f, stiffness = 380f)
+                ),
+                exit = fadeOut(motion) + shrinkVertically(
+                    spring(dampingRatio = 0.8f, stiffness = 380f)
+                )
+            ) {
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "宠物大小",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    },
-                    track = { state ->
-                        val fraction = ((state.value - state.valueRange.start) /
-                            (state.valueRange.endInclusive - state.valueRange.start)).coerceIn(0f, 1f)
-                        // 100% 刻度点在轨道上的相对位置
-                        val resetFraction = (1f - MIN_SCALE_UI) / (MAX_SCALE_UI - MIN_SCALE_UI)
-                        Box(
-                            Modifier.fillMaxWidth().height(24.dp),
-                            contentAlignment = Alignment.CenterStart
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = { sliderValue = 1f; onScaleChange(1f) },
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            // 静默轨道
-                            Box(
-                                Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "恢复原始大小",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            // 活跃轨道
-                            Box(
-                                Modifier.fillMaxWidth(fraction).height(8.dp).clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            // 100% 刻度点（被拇指经过时自然被覆盖）
-                            Box(Modifier.fillMaxWidth(resetFraction)) {
-                                Box(
-                                    Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .size(4.dp)
-                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                                )
-                            }
                         }
                     }
-                )
-                StepButton("+", "放大") { nudge(SCALE_STEP) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StepButton("−", "缩小") { nudge(-SCALE_STEP) }
+                        Slider(
+                            value = sliderValue,
+                            onValueChange = { dragging = true; sliderValue = it },
+                            onValueChangeFinished = { dragging = false; onScaleChange(sliderValue) },
+                            valueRange = MIN_SCALE_UI..MAX_SCALE_UI,
+                            modifier = Modifier.weight(1f),
+                            thumb = {
+                                Box(
+                                    Modifier
+                                        .size(20.dp)
+                                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                )
+                            },
+                            track = { state ->
+                                val fraction = ((state.value - state.valueRange.start) /
+                                    (state.valueRange.endInclusive - state.valueRange.start)).coerceIn(0f, 1f)
+                                // 100% 刻度点在轨道上的相对位置
+                                val resetFraction = (1f - MIN_SCALE_UI) / (MAX_SCALE_UI - MIN_SCALE_UI)
+                                Box(
+                                    Modifier.fillMaxWidth().height(24.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Box(
+                                        Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                                    )
+                                    Box(
+                                        Modifier.fillMaxWidth(fraction).height(8.dp).clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                    Box(Modifier.fillMaxWidth(resetFraction)) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .size(4.dp)
+                                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                        StepButton("+", "放大") { nudge(SCALE_STEP) }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    if (isRunning) {
+                        FilledTonalButton(
+                            onClick = onStopOverlay,
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("关闭宠物")
+                        }
+                    } else {
+                        Button(
+                            onClick = onStartOverlay,
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("开启宠物")
+                        }
+                    }
+                }
             }
         }
     }
