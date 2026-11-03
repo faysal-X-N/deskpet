@@ -85,10 +85,20 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         auto?.onUserTouch()
     }
 
-    private fun onScale(zoom: Float) {
+    private fun onScale(zoom: Float, focusX: Float, focusY: Float) {
         // 与 AnimationController / UI 滑块保持一致：50%~500%
         val ns = (savedScale * zoom).coerceIn(0.5f, 5f)
+        // clamp 截断后实际生效的比例，位置补偿必须用它，否则锚点会漂
+        val applied = if (savedScale > 0f) ns / savedScale else 1f
         savedScale = ns
+        if (applied != 1f) {
+            // 以双指中心（centroid）为锚点缩放：窗口尺寸从 W 变为 W*applied 时，
+            // 把窗口左上角反向平移 focus*(1-applied)，手指夹住的点保持不动。
+            // 旧实现只改大小不补位置，放大时宠物朝右下"逃"、缩小时朝左上"缩"。
+            wx += focusX * (1f - applied)
+            wy += focusY * (1f - applied)
+            updatePosition()
+        }
         anim.setScale(ns)
         auto?.onUserTouch()
     }
