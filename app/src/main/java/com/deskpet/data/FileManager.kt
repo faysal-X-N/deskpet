@@ -36,6 +36,8 @@ class FileManager(private val context: Context) {
         private const val RECODE_THRESHOLD_BYTES = 1_500_000L
         /** 有损 WebP 质量 85：实测 PSNR ≥40dB（肉眼不可辨），alpha 仍走无损边缘不受损 */
         private const val RECODE_QUALITY = 85
+        /** 转码解码像素上限（约 6000×4000）：超过则 ARGB_8888 解码近百 MB，低内存设备有 OOM 风险，跳过转码保留原文件 */
+        private const val MAX_RECODE_PIXELS = 24_000_000L
     }
 
     // ===== Import =====
@@ -55,10 +57,11 @@ class FileManager(private val context: Context) {
             } catch (e: Exception) {
                 throw ImportException.InvalidFormat("pet.json 解析失败：${e.message}")
             }
-            val spritesheetFile = findSpritesheet(destDir)
+            val foundSheet = findSpritesheet(destDir)
                 ?: throw ImportException.InvalidFormat("缺少 spritesheet.webp 或 spritesheet.png")
-            // 导入时智能转码：大体积 PNG/无损 WebP → 有损 WebP，省用户存储
-            recompressSpritesheetIfNeeded(spritesheetFile)
+            // 导入时智能转码：大体积 PNG/无损 WebP → 有损 WebP，省用户存储。
+            // 转码成功可能改名（.png → spritesheet.webp），必须用返回值
+            val spritesheetFile = recompressSpritesheetIfNeeded(foundSheet)
             PetInfo(id = id, type = PetType.CODEX_PET, displayName = config.displayName,
                 petJsonPath = petJsonFile.absolutePath, spritesheetPath = spritesheetFile.absolutePath,
                 sourceId = config.id)
@@ -67,38 +70,109 @@ class FileManager(private val context: Context) {
     }
 
     /**
-     * 导入时智能转码（调研修正版）：社区素材包常携带大体积 PNG / 无损 WebP，
-     * 超过阈值则解码 → 有损 WebP 重编码，为用户省存储。
+     * 导入时智能转码（深度复查修正版）：社区素材包常携带大体积 PNG / 无损
+     * WebP，超过阈值则解码 → 有损 WebP 重编码，为用户省存储。
      * 护栏（每条都是硬约束）：
-     * 1. 只重编码、绝不缩尺寸——pet.json 网格按像素写死，缩放会帧错位
-     * 2. BitmapFactory 软件解码——HARDWARE 位图无法 compress（调研坑 1）
-     * 3. 产物需通过"可解码 + 尺寸一致 + 更小"三重校验才替换，任一失败保留原文件
-     * 4. GIF 不处理（系统无 GIF 编码器；渲染端已有 1024px 降采样管内存）
-     * 调用方保证运行在 Dispatchers.IO（解码约 11MB 峰值 + 编码 1~2 秒）。
+     * 1. 解码前先读头预检尺寸——超大图（如 6000×7000 的 20MB PNG）整图解码
+     *    要上百 MB，OutOfMemoryError 不是 Exception 接不住，必须事前拦截
+     * 2. 只对 PNG / 无损 WebP 转码：已有损的 WebP 再压一遍是二次画质损失，
+     *    违背零损标准（webp 头 12 字节后是 chunk 标签：VP8L=无损，VP8/VP8X=跳过）
+     * 3. 只重编码、绝不缩尺寸——pet.json 网格按像素写死，缩放会帧错位
+     * 4. BitmapFactory 软件解码——HARDWARE 位图无法 compress
+     * 5. 产物需通过"可解码 + 尺寸一致 + 更小"三重校验才替换，任何失败保留
+     *    原文件；catch Throwable 兜底（OOM 是 Error 不是 Exception）
+     * 6. PNG 转码成功后改名 spritesheet.webp（内容变了扩展名要一致，
+     *    导出 zip 给其他 Codex 播放器才不会格式对不上）
+     * 7. GIF 不处理（系统无 GIF 编码器；渲染端已有 1024px 降采样管内存）
+     * 调用方保证运行在 Dispatchers.IO（解码峰值数十 MB + 编码 1~2 秒）。
      */
-    private fun recompressSpritesheetIfNeeded(file: File) {
-        if (file.length() <= RECODE_THRESHOLD_BYTES) return
+    private fun recompressSpritesheetIfNeeded(file: File): File {
+        if (file.length() <= RECODE_THRESHOLD_BYTES) return file
+        val ext = file.extension.lowercase()
+        // 护栏 2：只转 PNG 和无损 WebP；已有损的 WebP 不做二次有损
+        val worth = when (ext) {
+            "png" -> true
+            "webp" -> isLosslessWebp(file)
+            else -> false
+        }
+        if (!worth) return file
+        // 护栏 1：解码前预检尺寸，防 OOM
+        val head = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, head)
+        val pixels = head.outWidth.toLong() * head.outHeight.toLong()
+        if (head.outWidth <= 0 || head.outHeight <= 0 || pixels > MAX_RECODE_PIXELS) return file
+
         var src: Bitmap? = null
         val tmp = File(file.parentFile, file.name + ".recode.tmp")
+        // 护栏 6：PNG 转码后统一叫 spritesheet.webp
+        val target = if (ext == "png") File(file.parentFile, "spritesheet.webp") else file
         try {
             val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-            src = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return
+            src = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return file
             val fmt = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY
             else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP // API 26~29：quality<100 即有损
-            FileOutputStream(tmp).use { out -> if (!src.compress(fmt, RECODE_QUALITY, out)) return }
+            FileOutputStream(tmp).use { out -> if (!src.compress(fmt, RECODE_QUALITY, out)) return file }
             // 校验 1：产物确实更小
-            if (tmp.length() >= file.length()) return
+            if (tmp.length() >= file.length()) return file
             // 校验 2：产物可解码且尺寸与源完全一致（帧网格不被破坏）
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(tmp.absolutePath, bounds)
-            if (bounds.outWidth != src.width || bounds.outHeight != src.height) return
+            if (bounds.outWidth != src.width || bounds.outHeight != src.height) return file
+            // 校验 3：改名目标万一已存在（异常包结构），不覆盖直接放弃
+            if (target != file && target.exists()) return file
             // 全部通过才替换；rename 失败等意外一律保留原文件
-            if (!tmp.renameTo(file)) return
-        } catch (e: Exception) {
-            Log.w(TAG, "spritesheet recompress skipped: ${e.message}")
+            if (!tmp.renameTo(target)) return file
+            if (target != file) file.delete()
+            return target
+        } catch (t: Throwable) {
+            // Throwable 而非 Exception：OutOfMemoryError 等也必须保住原文件
+            Log.w(TAG, "spritesheet recompress skipped: ${t.message}")
+            return file
         } finally {
             src?.recycle()
             tmp.delete() // 未替换成功时清掉临时文件；已替换时它已不存在，无害
+        }
+    }
+
+    /**
+     * 判断 webp 是否无损编码（VP8L）。必须按 RIFF chunk 结构逐个遍历：
+     * 带透明的 WebP（精灵图常态）一律包在 VP8X 扩展容器里，有损+透明还会
+     * 在 VP8 前面插一个 ALPH chunk——只看文件头 12 字节会把"无损+透明"
+     * 误判成有损（实测踩坑）。规则：VP8L=无损；VP8=有损；ALPH/ICCP/EXIF/
+     * XMP/ANIM 等按长度跳过（chunk 按 2 字节对齐，奇数长度补 1）；读不出
+     * 结果一律按有损跳过（宁可少省空间，不做二次有损）。
+     */
+    private fun isLosslessWebp(file: File): Boolean {
+        return try {
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                val len = raf.length()
+                if (len < 16) return false
+                val magic = ByteArray(12)
+                raf.readFully(magic)
+                if (String(magic, 0, 4, Charsets.US_ASCII) != "RIFF" ||
+                    String(magic, 8, 4, Charsets.US_ASCII) != "WEBP"
+                ) return false
+                val tag = ByteArray(4)
+                val sizeB = ByteArray(4)
+                var off = 12L
+                repeat(8) {
+                    if (off + 8 > len) return false
+                    raf.seek(off); raf.readFully(tag)
+                    raf.seek(off + 4); raf.readFully(sizeB)
+                    val size = (sizeB[0].toLong() and 0xFF) or
+                        ((sizeB[1].toLong() and 0xFF) shl 8) or
+                        ((sizeB[2].toLong() and 0xFF) shl 16) or
+                        ((sizeB[3].toLong() and 0xFF) shl 24)
+                    when (String(tag, Charsets.US_ASCII)) {
+                        "VP8L" -> return true
+                        "VP8 " -> return false
+                    }
+                    off += 8 + size + (size and 1L)
+                }
+                false
+            }
+        } catch (t: Throwable) {
+            false
         }
     }
 
