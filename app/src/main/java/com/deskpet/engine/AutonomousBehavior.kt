@@ -26,11 +26,11 @@ class AutonomousBehavior(
         behaviorJob?.cancel()
         behaviorJob = coroutineScope.launch {
             while (isActive) {
-                delay(Random.nextLong(8_000, 20_001))  // 8-20s
-                if (System.currentTimeMillis() - lastTouchTime >= 5_000) {  // 5秒无触摸
-                    val state = autoStates.random()
+                delay(Random.nextLong(5_000, 30_001))  // 5~30 秒随机间隔
+                // 30 秒内有过触摸就跳过，避免用户正在互动时宠物自己乱动
+                if (System.currentTimeMillis() - lastTouchTime >= IDLE_THRESHOLD_MS) {
                     if (animationController.currentState.value == PetAnimationState.IDLE) {
-                        animationController.switchState(state)
+                        animationController.switchState(autoStates.random())
                     }
                 }
             }
@@ -40,5 +40,9 @@ class AutonomousBehavior(
     fun stop() {
         behaviorJob?.cancel()
         behaviorJob = null
+    }
+
+    companion object {
+        private const val IDLE_THRESHOLD_MS = 30_000L
     }
 }

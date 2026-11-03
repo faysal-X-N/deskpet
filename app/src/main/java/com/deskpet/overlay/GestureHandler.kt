@@ -1,8 +1,8 @@
 package com.deskpet.overlay
 
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import com.deskpet.data.model.DragDirection
@@ -13,7 +13,8 @@ class GestureHandler(
     private val onDrag: (dx: Float, dy: Float, direction: DragDirection) -> Unit,
     private val onTap: () -> Unit,
     private val isCodexPet: () -> Boolean,
-    private val onScale: (Float) -> Unit = {}
+    private val onScale: (Float) -> Unit = {},
+    private val onDragEnd: () -> Unit = {}
 ) {
     val modifier: Modifier
         get() = Modifier
@@ -34,12 +35,14 @@ class GestureHandler(
                             onDrag(dragAmount.x, dragAmount.y, DragDirection.RIGHT)
                         }
                     },
-                    onDragEnd = { }
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragEnd() }
                 )
             }
             .pointerInput("pinch") {
                 awaitEachGesture {
                     var span = 0f
+                    var scaled = false
                     do {
                         val event = awaitPointerEvent()
                         val active = event.changes.filter { it.pressed }
@@ -47,11 +50,15 @@ class GestureHandler(
                             val p1 = active[0].position
                             val p2 = active[1].position
                             val newSpan = (p1 - p2).getDistance()
-                            if (span > 0f && newSpan > 0f) onScale(newSpan / span)
+                            if (span > 0f && newSpan > 0f) {
+                                onScale(newSpan / span)
+                                scaled = true
+                            }
                             span = newSpan
                             active.forEach { it.consume() }
                         }
                     } while (event.changes.any { it.pressed })
+                    if (scaled) onDragEnd()
                 }
             }
             .pointerInput("tap") {

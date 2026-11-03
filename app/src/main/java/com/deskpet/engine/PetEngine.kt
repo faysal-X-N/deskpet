@@ -91,4 +91,10 @@ class PetEngine(
             is PetLoader.Gif -> Pair(gifRenderer.width, gifRenderer.height)
         }
     }
+
+    /** 释放解码缓存（服务销毁时调用）*/
+    fun release() {
+        spritesheetParser.release()
+        gifRenderer.release()
+    }
 }

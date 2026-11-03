@@ -68,6 +68,7 @@ class SpritesheetParser {
         return cachedFullBitmap
     }
 
+    @Synchronized
     fun extractFrame(
         config: CodexPetConfig,
         spritesheetPath: String,
@@ -108,6 +109,11 @@ class SpritesheetParser {
         return Rect(col * cw, row * ch, (col + 1) * cw, (row + 1) * ch)
     }
 
+    /**
+     * 释放缓存。与 [extractFrame] 互斥：解码可能在 IO 线程进行中，
+     * 直接 recycle 会踩到 "trying to use a recycled bitmap"。
+     */
+    @Synchronized
     fun release() {
         cachedDecoder?.recycle()
         cachedDecoder = null
