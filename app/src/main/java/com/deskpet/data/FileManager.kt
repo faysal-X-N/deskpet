@@ -62,6 +62,22 @@ class FileManager(private val context: Context) {
             // 导入时智能转码：大体积 PNG/无损 WebP → 有损 WebP，省用户存储。
             // 转码成功可能改名（.png → spritesheet.webp），必须用返回值
             val spritesheetFile = recompressSpritesheetIfNeeded(foundSheet)
+            // 转码改名后，pet.json 里的 spritesheetPath 引用（其他 Codex 播放器
+            // 靠它找图）必须同步更新，否则导出的包在外部播放器上断链
+            if (spritesheetFile.name != foundSheet.name &&
+                File(config.spritesheetPath).name == foundSheet.name
+            ) {
+                try {
+                    val newRef = petJsonFile.parentFile.toPath()
+                        .relativize(spritesheetFile.toPath()).toString().replace('\\', '/')
+                    val tmp = File(petJsonFile.parentFile, petJsonFile.name + ".sync.tmp")
+                    tmp.writeText(json.encodeToString(CodexPetConfig.serializer(), config.copy(spritesheetPath = newRef)))
+                    if (!tmp.renameTo(petJsonFile)) tmp.delete()
+                } catch (t: Throwable) {
+                    // 同步失败不影响导入：本 App 用 PetInfo.spritesheetPath，不读这个字段
+                    Log.w(TAG, "pet.json spritesheetPath sync skipped: ${t.message}")
+                }
+            }
             PetInfo(id = id, type = PetType.CODEX_PET, displayName = config.displayName,
                 petJsonPath = petJsonFile.absolutePath, spritesheetPath = spritesheetFile.absolutePath,
                 sourceId = config.id)
@@ -335,6 +351,8 @@ class FileManager(private val context: Context) {
                 if (file == dir) return@forEach
                 // 缩略图缓存只在列表页用，不打包进导出/备份 zip（体积浪费）
                 if (file.name.startsWith("thumb")) return@forEach
+                // 转码/写入中途进程被杀会留下 .tmp 孤儿文件，不该混进导出包
+                if (file.name.endsWith(".tmp")) return@forEach
                 val entryName = (prefix + dir.toPath().relativize(file.toPath()).toString())
                     .replace('\\', '/')
                 if (file.isDirectory) {

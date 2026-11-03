@@ -166,11 +166,14 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         androidx.core.content.ContextCompat.registerReceiver(
             this, screenReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        // 注册时同步一次省电状态：服务可能在省电模式已开启时才启动
+        // 注册时同步一次省电/亮灭屏状态：服务可能在省电已开启或灭屏期间才启动
+        val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
         if (::anim.isInitialized) {
-            val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
             anim.powerSaveMode = pm.isPowerSaveMode
         }
+        // START_STICKY 可能在灭屏期间拉起服务，此时不会有 SCREEN_OFF 广播到来，
+        // 不主动查一次就会在锁屏上白跑动画（loadPet 据此决定是否立即启动）
+        screenOn = pm.isInteractive
     }
 
     private fun startForeground() {
@@ -329,7 +332,8 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         }
         anim.setScale(info.scale)
         savedScale = info.scale
-        anim.start()
+        // 灭屏期间被系统拉起时不启动动画，等 SCREEN_ON 广播再开（registerReceiverSafely 已同步 screenOn）
+        if (screenOn) anim.start()
         if (!add()) {
             OverlayState.setRunning(null)
             // 不停服会留下"正在运行"的通知和常驻前台服务，但宠物根本没显示
@@ -339,7 +343,8 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         observeScale(id)
         auto?.stop()
         auto = AutonomousBehavior(anim, sc)
-        auto?.start()
+        // 亮屏且非省电才启动自主行为；灭屏/省电场景由广播负责恢复
+        if (screenOn && !anim.powerSaveMode) auto?.start()
         OverlayState.setRunning(id)
     }
 
