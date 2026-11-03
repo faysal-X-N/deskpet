@@ -5,20 +5,22 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -48,6 +51,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.deskpet.data.model.PetInfo
 import com.deskpet.data.model.PetType
@@ -87,6 +91,8 @@ fun PetListScreen(
     onShowHelp: () -> Unit = {}
 ) {
     var deleteTarget by remember { mutableStateOf<String?>(null) }
+    // 横竖屏判定提前到最上面：网格右缘避让和收纳坞形态都要用
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     deleteTarget?.let { id ->
         AlertDialog(
@@ -159,8 +165,12 @@ fun PetListScreen(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 120.dp),
                 // 网格先避让导航条，再留收纳坞的高度（坞=12dp 边距+约 44dp 药丸，
-                // 88dp 余量保证最后一行卡片在收纳态不被遮挡）
-                contentPadding = PaddingValues(bottom = 88.dp),
+                // 88dp 余量保证最后一行卡片在收纳态不被遮挡）；
+                // 横屏时右缘再留竖坞宽度（约 116dp + 12dp 边距），避免卡片压在坞下
+                contentPadding = PaddingValues(
+                    bottom = 88.dp,
+                    end = if (isLandscape) 132.dp else 0.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize().navigationBarsPadding()
@@ -184,11 +194,11 @@ fun PetListScreen(
         // toolbar，别堆顶栏）。只要有宠物就显示；列表数据未读出前不渲染
         // （activeId 可能先于列表到达，否则滑块先按 100% 渲染、数据到达后
         // 再跳，启动瞬间会跳一下）
-    // 横屏时底部收纳坞不占满全宽（M3 自适应规范：宽屏底部组件应收窄并靠边），
-    // 改为右下角 55% 宽度，竖屏保持底部居中占满
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // 横屏（M3 规范：宽屏竖排悬浮工具栏贴侧边、离拇指近）：坞改右缘垂直
+    // 居中的竖条形态；竖屏保持底部居中。横屏时网格右缘留出坞的宽度
     if (petList.isNotEmpty() && !isLoading) {
         PetDock(
+            vertical = isLandscape,
             isRunning = isOverlayRunning,
             canStart = activePetId != null,
             curScale = curScale,
@@ -198,22 +208,32 @@ fun PetListScreen(
             onImportClick = onImportClick,
             onShowHelp = onShowHelp,
             onBackupAll = onBackupAll,
-            modifier = Modifier
-                .align(if (isLandscape) Alignment.BottomEnd else Alignment.BottomCenter)
+            modifier = if (isLandscape) Modifier
+                .align(Alignment.CenterEnd)
+                .navigationBarsPadding()
+                .padding(end = 12.dp)
+            else Modifier
+                .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 12.dp)
-                .fillMaxWidth(if (isLandscape) 0.55f else 1f)
+                .fillMaxWidth()
         )
     }
     }
 }
 
 /**
- * 底部收纳坞（调研结论 v3）：M3 Expressive FloatingToolbar 官方行为是
- * "collapse into a single, high-emphasis action"——收纳态不是一条全宽
- * 药丸，而是一个高强调小圆钮；灵动岛 minimal 形态同理（一个元素 +
- * 状态点）。本实现：收起 = 56dp 圆钮（展开箭头 + 边缘状态点），
- * 点按经 AnimatedContent 形变放大成完整面板（滑块 + 开关 + 次要操作行）。
+ * 底部收纳坞 v4（"壳先动、内容后跟"真形变）：单容器方案——Surface 用
+ * animateContentSize 弹簧在"56dp 圆钮 ↔ 面板自身尺寸"之间形变，圆角经
+ * animateDpAsState 同步插值；内容层用带延迟的 AnimatedVisibility 错峰进出：
+ * 展开时壳先长、面板内容延迟 ~80ms 淡入上浮；收起时内容先退场、壳再缩回
+ * （AnimatedVisibility 退场期间保持测量，缩回自然滞后于内容消失）。比 v3 的
+ * AnimatedContent 双内容交叉淡化（两张半透明画面叠加的"切换感"）更接近
+ * 灵动岛 / M3 FloatingToolbar 的单容器形变感。
+ *
+ * 横屏（M3 规范：宽屏上竖排悬浮工具栏应贴屏幕侧边、离拇指近）：改右缘
+ * 垂直居中竖条坞；竖排滑块用"横滑块 requiredSize + graphicsLayer 旋转
+ * -90°"实现，手势方向自动映射，与竖屏手感一致。
  *
  * 滑块状态逻辑（勿改回旧写法）：value 始终用本地 sliderValue；repo 变化经
  * LaunchedEffect 同步进来、拖动中忽略。不能用 shown = if(dragging) local else
@@ -222,6 +242,7 @@ fun PetListScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PetDock(
+    vertical: Boolean,
     isRunning: Boolean,
     canStart: Boolean,
     curScale: Float,
@@ -256,38 +277,34 @@ private fun PetDock(
         }
     }
 
-    // 展开/收起共用同一 M3 Expressive 弹簧节奏（形变过渡 + 淡入淡出）
-    val motion = spring<Float>(dampingRatio = 0.8f, stiffness = 380f)
+    // 单一弹簧节奏：容器尺寸形变与圆角插值共用同一节奏参数。阻尼 0.85 /
+    // 刚度 450 比旧参（0.8 / 380）更利落——回弹少、收得快，"发糊"的体感
+    // 一部分来自旧参偏肉
+    val motion = spring<IntSize>(dampingRatio = 0.85f, stiffness = 450f)
+    val corner by animateDpAsState(
+        if (expanded) 24.dp else 28.dp,
+        spring(dampingRatio = 0.85f, stiffness = 450f),
+        label = "dockCorner"
+    )
 
-    // 收纳态 = 单个小圆钮（M3 FloatingToolbar 官方行为 "collapse into a
-    // single, high-emphasis action"；灵动岛的 minimal 形态同理：一个元素
-    // + 状态点），点按弹簧放大成完整面板。AnimatedContent 负责"圆钮 ↔
-    // 面板"两个形态的形变切换——比单容器 + AnimatedVisibility 更接近
-    // 灵动岛的"容器先动、内容后跟"编排。
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        AnimatedContent(
-            targetState = expanded,
-            transitionSpec = {
-                (fadeIn(motion) + scaleIn(initialScale = 0.85f, animationSpec = motion)) togetherWith
-                    (fadeOut(motion) + scaleOut(targetScale = 0.92f, animationSpec = motion))
-            },
-            label = "dockMorph"
-        ) { isExpanded ->
-            if (!isExpanded) {
-                // —— 收纳态：56dp 小圆钮（箭头 + 边缘状态点）——
-                Surface(
-                    onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                        expanded = true
-                    },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shadowElevation = 6.dp,
-                    modifier = Modifier.size(56.dp)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.animateContentSize(motion),
+            shape = RoundedCornerShape(corner),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shadowElevation = 6.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                // —— 收纳态内容：56dp 圆钮（箭头 + 边缘状态点）。
+                // 收起时圆钮内容先淡出、容器随后缩回，两段式退场 ——
+                AnimatedVisibility(
+                    visible = !expanded,
+                    enter = fadeIn(tween(140, delayMillis = 90)),
+                    exit = fadeOut(tween(70))
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
                         Icon(
-                            Icons.Default.KeyboardArrowUp,
+                            if (vertical) Icons.Default.KeyboardArrowLeft else Icons.Default.KeyboardArrowUp,
                             contentDescription = "展开控制",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(26.dp)
@@ -307,181 +324,315 @@ private fun PetDock(
                         )
                     }
                 }
-            } else {
-                // —— 展开态：完整控制面板 ——
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shadowElevation = 6.dp
+                // —— 展开态内容：容器先长、面板延迟 ~80ms 淡入并轻微上浮 ——
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn(tween(180, delayMillis = 80)) +
+                        scaleIn(initialScale = 0.97f, animationSpec = tween(220, delayMillis = 80)),
+                    exit = fadeOut(tween(90))
                 ) {
-                    Column {
-                        // 表头：点按收起
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                    expanded = false
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
+                    if (!vertical) {
+                        // ===== 竖屏：横条面板（表头 + 滑块 + 开关 + 次要操作行）=====
+                        Column {
+                            // 表头：点按收起
+                            Row(
                                 Modifier
-                                    .size(8.dp)
-                                    .background(
-                                        if (isRunning) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.outlineVariant,
-                                        CircleShape
-                                    )
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (isRunning) "运行中" else "未开启",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                "${(sliderValue * 100).roundToInt()}%",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Icon(
-                                Icons.Default.KeyboardArrowDown,
-                                contentDescription = "收起控制",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // 控制内容：滑块行 + 全宽开关按钮 + 次要操作行
-                        Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "宠物大小",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.weight(1f))
-                        IconButton(
-                            onClick = {
-                                sliderValue = 1f
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                onScaleChange(1f)
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = "恢复原始大小",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StepButton("−", "缩小") { nudge(-SCALE_STEP) }
-                        Slider(
-                            value = sliderValue,
-                            onValueChange = { dragging = true; sliderValue = it },
-                            onValueChangeFinished = {
-                                dragging = false
-                                // 松手提交时轻 tick 一下，"落定"的手感（连续拖动不震，避免噪声）
-                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                onScaleChange(sliderValue)
-                            },
-                            valueRange = MIN_SCALE_UI..MAX_SCALE_UI,
-                            modifier = Modifier.weight(1f),
-                            thumb = {
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        expanded = false
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(
                                     Modifier
-                                        .size(20.dp)
-                                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                        .size(8.dp)
+                                        .background(
+                                            if (isRunning) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.outlineVariant,
+                                            CircleShape
+                                        )
                                 )
-                            },
-                            track = { state ->
-                                val fraction = ((state.value - state.valueRange.start) /
-                                    (state.valueRange.endInclusive - state.valueRange.start)).coerceIn(0f, 1f)
-                                // 100% 刻度点在轨道上的相对位置
-                                val resetFraction = (1f - MIN_SCALE_UI) / (MAX_SCALE_UI - MIN_SCALE_UI)
-                                Box(
-                                    Modifier.fillMaxWidth().height(24.dp),
-                                    contentAlignment = Alignment.CenterStart
-                                ) {
-                                    Box(
-                                        Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (isRunning) "运行中" else "未开启",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    "${(sliderValue * 100).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Icon(
+                                    Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "收起控制",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "宠物大小",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Box(
-                                        Modifier.fillMaxWidth(fraction).height(8.dp).clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary)
-                                    )
-                                    Box(Modifier.fillMaxWidth(resetFraction)) {
-                                        Box(
-                                            Modifier
-                                                .align(Alignment.CenterEnd)
-                                                .size(4.dp)
-                                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                    Spacer(Modifier.weight(1f))
+                                    IconButton(
+                                        onClick = {
+                                            sliderValue = 1f
+                                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                            onScaleChange(1f)
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "恢复原始大小",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    StepButton("−", "缩小") { nudge(-SCALE_STEP) }
+                                    ScaleSlider(
+                                        value = sliderValue,
+                                        onValueChange = { dragging = true; sliderValue = it },
+                                        onValueChangeFinished = {
+                                            dragging = false
+                                            // 松手提交时轻 tick 一下，"落定"的手感（连续拖动不震，避免噪声）
+                                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                            onScaleChange(sliderValue)
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    StepButton("+", "放大") { nudge(SCALE_STEP) }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                if (isRunning) {
+                                    FilledTonalButton(
+                                        onClick = {
+                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            onStopOverlay()
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("关闭宠物")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            view.performHapticFeedback(
+                                                if (android.os.Build.VERSION.SDK_INT >= 30)
+                                                    HapticFeedbackConstants.CONFIRM
+                                                else HapticFeedbackConstants.VIRTUAL_KEY
+                                            )
+                                            onStartOverlay()
+                                        },
+                                        enabled = canStart,
+                                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(if (canStart) "开启宠物" else "先选择一只宠物")
+                                    }
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                // 次要操作行（M3：低频操作放 toolbar，安静的文字按钮）
+                                Row(Modifier.fillMaxWidth()) {
+                                    DockAction(Icons.Default.Add, "导入") { onImportClick() }
+                                    DockAction(Icons.Default.Info, "帮助") { onShowHelp() }
+                                    DockAction(Icons.Default.Share, "备份全部") { onBackupAll() }
+                                }
                             }
-                        )
-                        StepButton("+", "放大") { nudge(SCALE_STEP) }
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    if (isRunning) {
-                        FilledTonalButton(
-                            onClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                onStopOverlay()
-                            },
-                            modifier = Modifier.fillMaxWidth().height(46.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("关闭宠物")
                         }
                     } else {
-                        Button(
-                            onClick = {
-                                view.performHapticFeedback(
-                                    if (android.os.Build.VERSION.SDK_INT >= 30)
-                                        HapticFeedbackConstants.CONFIRM
-                                    else HapticFeedbackConstants.VIRTUAL_KEY
-                                )
-                                onStartOverlay()
-                            },
-                            enabled = canStart,
-                            modifier = Modifier.fillMaxWidth().height(46.dp),
-                            shape = RoundedCornerShape(16.dp)
+                        // ===== 横屏：右缘竖条面板（状态 + 竖滑块 + 开关 + 图标列）=====
+                        Column(
+                            Modifier.width(124.dp).padding(horizontal = 10.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (canStart) "开启宠物" else "先选择一只宠物")
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    // 次要操作行（M3：低频操作放 toolbar，安静的文字按钮）
-                    Row(Modifier.fillMaxWidth()) {
-                        DockAction(Icons.Default.Add, "导入") { onImportClick() }
-                        DockAction(Icons.Default.Info, "帮助") { onShowHelp() }
-                        DockAction(Icons.Default.Share, "备份全部") { onBackupAll() }
-                    }
+                            // 状态行：点按收起（圆钮箭头朝左，这里点任意处收回）
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        expanded = false
+                                    }
+                                    .padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(8.dp)
+                                        .background(
+                                            if (isRunning) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.outlineVariant,
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "${(sliderValue * 100).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            // 竖排滑块：横滑块旋转 -90°（requiredSize 无视父约束
+                            // 保证测量尺寸，graphicsLayer 只转绘制与触点、不动布局）
+                            Box(
+                                Modifier.height(110.dp).fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                ScaleSlider(
+                                    value = sliderValue,
+                                    onValueChange = { dragging = true; sliderValue = it },
+                                    onValueChangeFinished = {
+                                        dragging = false
+                                        view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                        onScaleChange(sliderValue)
+                                    },
+                                    modifier = Modifier
+                                        .graphicsLayer { rotationZ = -90f }
+                                        .requiredSize(110.dp, 36.dp)
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                StepButton("−", "缩小") { nudge(-SCALE_STEP) }
+                                StepButton("+", "放大") { nudge(SCALE_STEP) }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            if (isRunning) {
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                        onStopOverlay()
+                                    },
+                                    modifier = Modifier.size(48.dp),
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                ) {
+                                    Icon(Icons.Default.Close, "关闭宠物", modifier = Modifier.size(20.dp))
+                                }
+                            } else {
+                                FilledIconButton(
+                                    onClick = {
+                                        view.performHapticFeedback(
+                                            if (android.os.Build.VERSION.SDK_INT >= 30)
+                                                HapticFeedbackConstants.CONFIRM
+                                            else HapticFeedbackConstants.VIRTUAL_KEY
+                                        )
+                                        onStartOverlay()
+                                    },
+                                    enabled = canStart,
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, "开启宠物", modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            HorizontalDivider(
+                                Modifier.padding(vertical = 8.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                            // 次要操作：竖屏是文字按钮，横幅空间宝贵改纯图标
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                DockIconAction(Icons.Default.Add, "导入") { onImportClick() }
+                                DockIconAction(Icons.Default.Info, "帮助") { onShowHelp() }
+                                DockIconAction(Icons.Default.Share, "备份全部") { onBackupAll() }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * 缩放滑块（竖屏/横屏共用）：M3 Expressive 风格粗圆角轨道 + 自定义圆形
+ * 拇指 + 100% 刻度点。竖屏横放，横屏经 graphicsLayer 旋转竖放。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScaleSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = MIN_SCALE_UI..MAX_SCALE_UI,
+        modifier = modifier,
+        thumb = {
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+            )
+        },
+        track = { state ->
+            val fraction = ((state.value - state.valueRange.start) /
+                (state.valueRange.endInclusive - state.valueRange.start)).coerceIn(0f, 1f)
+            // 100% 刻度点在轨道上的相对位置
+            val resetFraction = (1f - MIN_SCALE_UI) / (MAX_SCALE_UI - MIN_SCALE_UI)
+            Box(
+                Modifier.fillMaxWidth().height(24.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                )
+                Box(
+                    Modifier.fillMaxWidth(fraction).height(8.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+                Box(Modifier.fillMaxWidth(resetFraction)) {
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(4.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    )
+                }
+            }
+        }
+    )
+}
+
+/** 横屏竖坞里的纯图标次要操作按钮 */
+@Composable
+private fun DockIconAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
+        Icon(
+            icon, label,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -536,10 +687,23 @@ private fun PetGridCard(
         if (isActive) 1.04f else 1f,
         spring(dampingRatio = 0.6f, stiffness = 400f)
     )
+    // 水波纹配色（调研：M3 pressed 态 = 内容色 12% 叠加）：波纹必须跟卡片
+    // 自己的底色同家族——选中卡（primaryContainer 底）用 onPrimaryContainer
+    // 淡色，未选中卡（surfaceContainerLow 底）用 onSurface 淡色；默认的
+    // 全局主题色波纹跟两种底色都不搭，这就是"点击时底层色不协调"的来源。
+    // Card 的 Surface 裁剪保证波纹不溢出 20dp 圆角
+    val cardInteraction = remember { MutableInteractionSource() }
+    val rippleColor = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.16f)
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
     Card(
         modifier = modifier.aspectRatio(1f).graphicsLayer {
             scaleX = scale; scaleY = scale
-        }.combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        }.combinedClickable(
+            interactionSource = cardInteraction,
+            indication = ripple(color = rippleColor),
+            onClick = onClick,
+            onLongClick = onLongClick
+        ),
         shape = RoundedCornerShape(20.dp),
         // M3 Expressive：深度用色调差而不是阴影，选中用 primaryContainer 实色
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
