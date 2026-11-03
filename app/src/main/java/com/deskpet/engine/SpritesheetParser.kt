@@ -87,12 +87,15 @@ class SpritesheetParser {
         val stateConfig = getStateConfig(config, state)
         val frames = stateConfig.frames
         if (frames <= 0) return null
+        // 行号/列号钳制：pet.json 是外部导入的数据，frames=50 / row=100 这类
+        // 越界声明不能让它去解码 8x9 网格之外的区域（错帧甚至越界崩溃）
+        val row = stateConfig.row.coerceIn(0, SPRITESHEET_ROWS - 1)
         val col = frameIndex % frames
 
         // API 28+: BitmapRegionDecoder
         val decoder = getDecoder(spritesheetPath)
         if (decoder != null) {
-            val rect = calculateCellRect(stateConfig.row, col, decoder.width, decoder.height)
+            val rect = calculateCellRect(row, col, decoder.width, decoder.height)
             return try {
                 // 双缓冲复用（inBitmap）：帧位图必须是 mutable。首帧自建可变缓冲，
                 // 之后 A/B 交替写入；inBitmap 复用失败时退回普通解码保证正确性。
@@ -136,14 +139,15 @@ class SpritesheetParser {
 
         // API 26-27 WebP 回退
         val full = getFullBitmap(spritesheetPath) ?: return null
-        val rect = calculateCellRect(stateConfig.row, col, full.width, full.height)
+        val rect = calculateCellRect(row, col, full.width, full.height)
         return try {
             Bitmap.createBitmap(full, rect.left, rect.top, rect.width(), rect.height())
         } catch (e: Exception) { Log.w(TAG, "Failed to createBitmap from full", e); null }
     }
 
     fun getFrameCount(config: CodexPetConfig, state: PetAnimationState): Int {
-        return getStateConfig(config, state).frames
+        // 上限 = 一行最多 8 列：声明再多帧也取不到，反而会让列号越界
+        return getStateConfig(config, state).frames.coerceIn(0, SPRITESHEET_COLS)
     }
 
     fun calculateCellRect(row: Int, col: Int, w: Int, h: Int): Rect {
