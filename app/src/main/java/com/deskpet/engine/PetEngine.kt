@@ -84,8 +84,12 @@ class PetEngine(
                     inJustDecodeBounds = true
                 }
                 android.graphics.BitmapFactory.decodeFile(loader.spritesheetPath, options)
-                val w = options.outWidth / SPRITESHEET_COLS
-                val h = options.outHeight / SPRITESHEET_ROWS
+                if (options.outWidth <= 0 || options.outHeight <= 0) {
+                    return Pair(DEFAULT_PET_WIDTH, DEFAULT_PET_HEIGHT)
+                }
+                // 与 extractFrame 的渲染尺寸保持一致（超大单帧会被降采样，
+                // 窗口若按原始单元格算会比宠物画面大一圈）
+                val (w, h) = SpritesheetParser.renderCellSize(options.outWidth, options.outHeight)
                 if (w <= 0 || h <= 0) Pair(DEFAULT_PET_WIDTH, DEFAULT_PET_HEIGHT) else Pair(w, h)
             }
             is PetLoader.Gif -> Pair(gifRenderer.width, gifRenderer.height)

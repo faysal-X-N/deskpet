@@ -16,7 +16,31 @@ class SpritesheetParser {
         const val SPRITESHEET_COLS = 8
         const val SPRITESHEET_ROWS = 9
         const val DEFAULT_FRAME_COUNT = 6
+
+        /**
+         * 单帧渲染尺寸上限（与 GifRenderer 的 MAX_RENDER_DIM 同思路）。
+         * 帧 = 整图 ÷ 8×9，社区一张"平坦色大图"（PNG 压缩后可能只有几百 KB，
+         * 能混过 zip 总量限制）可以让单帧解码吃掉上百 MB——OutOfMemoryError
+         * 是 Error 不是 Exception，extractFrame 的 catch 接不住会直接闪退。
+         * 渲染端按 2 的幂降采样封顶，getPetSize 报告同一尺寸保持窗口一致。
+         */
+        const val MAX_FRAME_DIM = 1024
         private const val TAG = "SpritesheetParser"
+
+        /** 单帧超过上限时按 2 的幂取 inSampleSize（ceil 保证降完必然 ≤ 上限） */
+        fun frameSampleSize(cellW: Int, cellH: Int): Int {
+            var sample = 1
+            while (maxOf(cellW, cellH) > MAX_FRAME_DIM * sample) sample *= 2
+            return sample
+        }
+
+        /** 窗口尺寸应使用的单帧渲染尺寸 = 单元格 ÷ inSampleSize（与 extractFrame 一致） */
+        fun renderCellSize(sheetW: Int, sheetH: Int): Pair<Int, Int> {
+            val cw = sheetW / SPRITESHEET_COLS
+            val ch = sheetH / SPRITESHEET_ROWS
+            val sample = frameSampleSize(cw, ch)
+            return Pair((cw + sample - 1) / sample, (ch + sample - 1) / sample)
+        }
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -71,7 +95,18 @@ class SpritesheetParser {
         ensureCache(spritesheetPath)
         if (cachedFullBitmap == null || cachedFullBitmap?.isRecycled == true) {
             cachedFullBitmap = try {
-                BitmapFactory.decodeFile(spritesheetPath)
+                // 回退路径要整图解码：平坦色大图压缩后可能极小但像素数巨大，
+                // 直接解码上百 MB 会 OOM（Error 接不住）。按 2 的幂降采样，
+                // 封顶 32M 像素（ARGB_8888 约 128MB 上限，极端设备也不崩）
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(spritesheetPath, bounds)
+                val opts = BitmapFactory.Options()
+                if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                    var sample = 1
+                    while (bounds.outWidth.toLong() / sample * (bounds.outHeight.toLong() / sample) > 32_000_000L) sample *= 2
+                    if (sample > 1) opts.inSampleSize = sample
+                }
+                BitmapFactory.decodeFile(spritesheetPath, opts)
             } catch (e: Exception) { Log.w(TAG, "Failed to decode full bitmap", e); null }
         }
         return cachedFullBitmap
@@ -96,39 +131,45 @@ class SpritesheetParser {
         val decoder = getDecoder(spritesheetPath)
         if (decoder != null) {
             val rect = calculateCellRect(row, col, decoder.width, decoder.height)
+            // 畸形超大单帧防护：按 2 的幂降采样到 MAX_FRAME_DIM 内再解码，
+            // 缓冲尺寸同步用降采样后的 dw/dh
+            val sample = frameSampleSize(rect.width(), rect.height())
+            val dw = (rect.width() + sample - 1) / sample
+            val dh = (rect.height() + sample - 1) / sample
             return try {
                 // 双缓冲复用（inBitmap）：帧位图必须是 mutable。首帧自建可变缓冲，
                 // 之后 A/B 交替写入；inBitmap 复用失败时退回普通解码保证正确性。
                 fbIdx = (fbIdx + 1) % frameBuffers.size
-                val w = rect.width()
-                val h = rect.height()
                 val existing = frameBuffers[fbIdx]
                 var bmp: Bitmap? = null
                 if (existing != null && !existing.isRecycled && existing.isMutable &&
-                    existing.width == w && existing.height == h
+                    existing.width == dw && existing.height == dh
                 ) {
                     bmp = try {
                         decoder.decodeRegion(rect, BitmapFactory.Options().apply {
                             inPreferredConfig = Bitmap.Config.ARGB_8888
                             inMutable = true
                             inBitmap = existing
+                            inSampleSize = sample
                         })
                     } catch (e: IllegalArgumentException) {
                         null
                     }
                 }
                 if (bmp == null) {
-                    val fresh = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    val fresh = Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888)
                     bmp = try {
                         decoder.decodeRegion(rect, BitmapFactory.Options().apply {
                             inPreferredConfig = Bitmap.Config.ARGB_8888
                             inMutable = true
                             inBitmap = fresh
+                            inSampleSize = sample
                         })
                     } catch (e: IllegalArgumentException) {
                         // 连自建缓冲都复用失败（系统不支持等）：普通解码，本帧不复用
                         decoder.decodeRegion(rect, BitmapFactory.Options().apply {
                             inPreferredConfig = Bitmap.Config.ARGB_8888
+                            inSampleSize = sample
                         })
                     }
                 }
