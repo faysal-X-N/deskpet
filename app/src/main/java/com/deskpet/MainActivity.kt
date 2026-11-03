@@ -226,7 +226,7 @@ class MainActivity : ComponentActivity() {
                     // 导入
                     Text("📦 导入 Codex 宠物", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
-                    Text("应用内置了 8 只示例宠物。你也可以导入更多：\n1. 点击底部「导入」按钮\n2. 选择「🎨 导入 Codex Pet 素材包」\n3. 选取下载的 .zip 文件")
+                    Text("应用内置了 8 只示例宠物。你也可以导入更多：\n1. 点击底部的圆钮，展开控制面板\n2. 选择「导入」\n3. 选择「导入 Codex Pet 素材包」并选取下载的 .zip 文件")
 
                     Spacer(Modifier.height(8.dp))
                     Text("从哪里下载 Codex 宠物？", fontWeight = FontWeight.Bold)

@@ -95,7 +95,8 @@ fun DeskPetTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         androidx.compose.runtime.SideEffect {
-            val window = (view.context as Activity).window
+            // 安全转换：若 view.context 被 ContextThemeWrapper 等包装，避免 ClassCastException
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
             // 状态栏透明融入界面（edge-to-edge），图标明暗随主题
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
