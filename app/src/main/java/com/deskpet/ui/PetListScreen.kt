@@ -1,8 +1,10 @@
 package com.deskpet.ui
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -41,6 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,23 +184,27 @@ fun PetListScreen(
         // toolbar，别堆顶栏）。只要有宠物就显示；列表数据未读出前不渲染
         // （activeId 可能先于列表到达，否则滑块先按 100% 渲染、数据到达后
         // 再跳，启动瞬间会跳一下）
-        if (petList.isNotEmpty() && !isLoading) {
-            PetDock(
-                isRunning = isOverlayRunning,
-                canStart = activePetId != null,
-                curScale = curScale,
-                onStartOverlay = onStartOverlay,
-                onStopOverlay = onStopOverlay,
-                onScaleChange = onScaleChange,
-                onImportClick = onImportClick,
-                onShowHelp = onShowHelp,
-                onBackupAll = onBackupAll,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
-            )
-        }
+    // 横屏时底部收纳坞不占满全宽（M3 自适应规范：宽屏底部组件应收窄并靠边），
+    // 改为右下角 55% 宽度，竖屏保持底部居中占满
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    if (petList.isNotEmpty() && !isLoading) {
+        PetDock(
+            isRunning = isOverlayRunning,
+            canStart = activePetId != null,
+            curScale = curScale,
+            onStartOverlay = onStartOverlay,
+            onStopOverlay = onStopOverlay,
+            onScaleChange = onScaleChange,
+            onImportClick = onImportClick,
+            onShowHelp = onShowHelp,
+            onBackupAll = onBackupAll,
+            modifier = Modifier
+                .align(if (isLandscape) Alignment.BottomEnd else Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 12.dp)
+                .fillMaxWidth(if (isLandscape) 0.55f else 1f)
+        )
+    }
     }
 }
 
@@ -226,6 +234,11 @@ private fun PetDock(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // 震动（调研结论）：用系统语义常量而非自编波形——无需 VIBRATE 权限、
+    // 自动尊重系统震动开关、OEM 针对自家马达调校过；且只给关键操作加，
+    // 每次点按都震反而像 bug。展开=CONTEXT_CLICK，收起/微调=CLOCK_TICK，
+    // 开启=CONFIRM(30+)回退 VIRTUAL_KEY，关闭=VIRTUAL_KEY
+    val view = LocalView.current
     // 初值与同步都夹取到合法区间：万一存储里有历史脏值（超出 0.5~5），
     // M3 Slider 收到范围外的 value 会异常，这里做 UI 层最后防线
     var sliderValue by remember { mutableFloatStateOf(curScale.coerceIn(MIN_SCALE_UI, MAX_SCALE_UI)) }
@@ -238,6 +251,7 @@ private fun PetDock(
         val nv = (sliderValue + delta).coerceIn(MIN_SCALE_UI, MAX_SCALE_UI)
         if (nv != sliderValue) {
             sliderValue = nv
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             onScaleChange(nv)
         }
     }
@@ -262,7 +276,10 @@ private fun PetDock(
             if (!isExpanded) {
                 // —— 收纳态：56dp 小圆钮（箭头 + 边缘状态点）——
                 Surface(
-                    onClick = { expanded = true },
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        expanded = true
+                    },
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shadowElevation = 6.dp,
@@ -303,7 +320,10 @@ private fun PetDock(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable { expanded = false }
+                                .clickable {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    expanded = false
+                                }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -347,7 +367,11 @@ private fun PetDock(
                         )
                         Spacer(Modifier.weight(1f))
                         IconButton(
-                            onClick = { sliderValue = 1f; onScaleChange(1f) },
+                            onClick = {
+                                sliderValue = 1f
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onScaleChange(1f)
+                            },
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
@@ -363,7 +387,12 @@ private fun PetDock(
                         Slider(
                             value = sliderValue,
                             onValueChange = { dragging = true; sliderValue = it },
-                            onValueChangeFinished = { dragging = false; onScaleChange(sliderValue) },
+                            onValueChangeFinished = {
+                                dragging = false
+                                // 松手提交时轻 tick 一下，"落定"的手感（连续拖动不震，避免噪声）
+                                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                onScaleChange(sliderValue)
+                            },
                             valueRange = MIN_SCALE_UI..MAX_SCALE_UI,
                             modifier = Modifier.weight(1f),
                             thumb = {
@@ -407,7 +436,10 @@ private fun PetDock(
                     Spacer(Modifier.height(10.dp))
                     if (isRunning) {
                         FilledTonalButton(
-                            onClick = onStopOverlay,
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                onStopOverlay()
+                            },
                             modifier = Modifier.fillMaxWidth().height(46.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.filledTonalButtonColors(
@@ -421,7 +453,14 @@ private fun PetDock(
                         }
                     } else {
                         Button(
-                            onClick = onStartOverlay,
+                            onClick = {
+                                view.performHapticFeedback(
+                                    if (android.os.Build.VERSION.SDK_INT >= 30)
+                                        HapticFeedbackConstants.CONFIRM
+                                    else HapticFeedbackConstants.VIRTUAL_KEY
+                                )
+                                onStartOverlay()
+                            },
                             enabled = canStart,
                             modifier = Modifier.fillMaxWidth().height(46.dp),
                             shape = RoundedCornerShape(16.dp)
