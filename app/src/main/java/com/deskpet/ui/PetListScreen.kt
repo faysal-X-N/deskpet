@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -95,7 +96,16 @@ fun PetListScreen(
 
     Column(Modifier.fillMaxSize().statusBarsPadding().padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("宠物栏", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Column(Modifier.weight(1f)) {
+                Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (!isLoading && petList.isNotEmpty()) {
+                    Text(
+                        "${petList.size} 只宠物 · " + if (isOverlayRunning) "运行中" else "未开启",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onImportClick) {
                     Icon(Icons.Default.Add, "导入", tint = MaterialTheme.colorScheme.onSurface)
@@ -155,26 +165,40 @@ fun PetListScreen(
             // 磁盘数据尚未读出：保持空白，避免"还没有宠物"空状态在启动瞬间闪现
         } else if (petList.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("还没有宠物", style = MaterialTheme.typography.bodyLarge)
-                    Text("点击「导入」添加\n长按宠物可删除",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center)
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(
+                        Modifier.padding(horizontal = 36.dp, vertical = 30.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🐾", style = MaterialTheme.typography.headlineLarge)
+                        Spacer(Modifier.height(10.dp))
+                        Text("还没有宠物", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "点击右上角「导入」添加\n长按宠物可删除",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 120.dp),
                 contentPadding = PaddingValues(0.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(petList, key = { it.id }, contentType = { it.type }) { pet ->
                     PetGridCard(
                         pet = pet,
                         isActive = pet.id == activePetId,
+                        modifier = Modifier.animateItem(),
                         onClick = { onPetSelected(pet.id) },
                         onLongClick = { deleteTarget = pet.id },
                         onExport = { onExportPet(pet) }
@@ -326,6 +350,7 @@ private fun StepButton(symbol: String, desc: String, onClick: () -> Unit) {
 private fun PetGridCard(
     pet: PetInfo,
     isActive: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onExport: () -> Unit = {}
@@ -335,37 +360,62 @@ private fun PetGridCard(
         spring(dampingRatio = 0.6f, stiffness = 400f)
     )
     Card(
-        modifier = Modifier.aspectRatio(1f).graphicsLayer {
+        modifier = modifier.aspectRatio(1f).graphicsLayer {
             scaleX = scale; scaleY = scale
         }.combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isActive) 6.dp else 1.dp
-        ),
+        shape = RoundedCornerShape(20.dp),
+        // M3 Expressive：深度用色调差而不是阴影，选中用 primaryContainer 实色
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-            else MaterialTheme.colorScheme.surface
+            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerLow
         ),
-        border = androidx.compose.foundation.BorderStroke(
+        border = if (isActive) null
+        else androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            color = if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outlineVariant
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
     ) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(6.dp),
+            if (isActive) {
+                // 选中徽章：右上角小对勾，不依赖颜色单独传达状态（无障碍）
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(20.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Check, "已选中",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+            Column(
+                Modifier.fillMaxSize().padding(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center) {
+                verticalArrangement = Arrangement.Center
+            ) {
                 PetPreview(pet)
                 Spacer(Modifier.height(2.dp))
-                Text(pet.displayName, style = MaterialTheme.typography.labelSmall,
+                Text(
+                    pet.displayName, style = MaterialTheme.typography.labelSmall,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-                    color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface
+                )
             }
             IconButton(onClick = onExport, modifier = Modifier.align(Alignment.BottomEnd).size(28.dp)) {
-                Icon(Icons.Default.Share, "导出",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp))
+                Icon(
+                    Icons.Default.Share, "导出",
+                    tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }

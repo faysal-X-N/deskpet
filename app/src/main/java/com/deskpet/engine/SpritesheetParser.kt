@@ -24,6 +24,15 @@ class SpritesheetParser {
     @Volatile private var cachedFullBitmap: Bitmap? = null
     @Volatile private var cachedPath: String? = null
 
+    /**
+     * Codex 帧双缓冲（与 GifRenderer 同款设计）：decodeRegion 每帧新分配约 160KB
+     * 位图，2~5FPS 下每秒 0.3~0.8MB 的 GC 压力。用 inBitmap 让 A/B 两块缓冲交替
+     * 复用——第 N 帧写 A 时屏幕显示的是 N-1 帧的 B（上次绘制在 2 帧之前），
+     * 实际不会读写竞争。稳态零分配。
+     */
+    private val frameBuffers = arrayOfNulls<Bitmap>(2)
+    private var fbIdx = 0
+
     fun parse(petJsonPath: String): CodexPetConfig? {
         return try {
             val content = java.io.File(petJsonPath).readText()
@@ -85,9 +94,43 @@ class SpritesheetParser {
         if (decoder != null) {
             val rect = calculateCellRect(stateConfig.row, col, decoder.width, decoder.height)
             return try {
-                decoder.decodeRegion(rect, BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                })
+                // 双缓冲复用（inBitmap）：帧位图必须是 mutable。首帧自建可变缓冲，
+                // 之后 A/B 交替写入；inBitmap 复用失败时退回普通解码保证正确性。
+                fbIdx = (fbIdx + 1) % frameBuffers.size
+                val w = rect.width()
+                val h = rect.height()
+                val existing = frameBuffers[fbIdx]
+                var bmp: Bitmap? = null
+                if (existing != null && !existing.isRecycled && existing.isMutable &&
+                    existing.width == w && existing.height == h
+                ) {
+                    bmp = try {
+                        decoder.decodeRegion(rect, BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                            inMutable = true
+                            inBitmap = existing
+                        })
+                    } catch (e: IllegalArgumentException) {
+                        null
+                    }
+                }
+                if (bmp == null) {
+                    val fresh = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    bmp = try {
+                        decoder.decodeRegion(rect, BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                            inMutable = true
+                            inBitmap = fresh
+                        })
+                    } catch (e: IllegalArgumentException) {
+                        // 连自建缓冲都复用失败（系统不支持等）：普通解码，本帧不复用
+                        decoder.decodeRegion(rect, BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        })
+                    }
+                }
+                frameBuffers[fbIdx] = bmp
+                bmp
             } catch (e: Exception) { Log.w(TAG, "Failed to decode region", e); null }
         }
 
@@ -112,6 +155,7 @@ class SpritesheetParser {
     /**
      * 释放缓存。与 [extractFrame] 互斥：解码可能在 IO 线程进行中，
      * 直接 recycle 会踩到 "trying to use a recycled bitmap"。
+     * 帧缓冲与 GIF 双缓冲同理：只清引用不 recycle，交给 GC。
      */
     @Synchronized
     fun release() {
@@ -120,5 +164,7 @@ class SpritesheetParser {
         cachedFullBitmap?.recycle()
         cachedFullBitmap = null
         cachedPath = null
+        frameBuffers.fill(null)
+        fbIdx = 0
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.deskpet.data.FileManager
@@ -98,42 +99,111 @@ fun ImportScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("导入宠物", style = MaterialTheme.typography.headlineSmall)
+            Text("导入宠物", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text(
-                "支持 Codex Pet 标准素材包（.zip 含 pet.json）\n以及 GIF 动图文件",
+                "三种方式把新宠物带回家",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(28.dp))
 
-            Button(
-                onClick = { codexPetLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ImportOption(
+                icon = "🎨",
+                title = "Codex Pet 素材包",
+                subtitle = "标准 .zip（含 pet.json），支持 9 种动画",
+                filled = true,
                 enabled = !isImporting
-            ) { Text("🎨 导入 Codex Pet 素材包") }
+            ) { codexPetLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
             Spacer(Modifier.height(12.dp))
 
-            OutlinedButton(
-                onClick = { gifLauncher.launch(arrayOf("image/gif")) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ImportOption(
+                icon = "📷",
+                title = "GIF 动图",
+                subtitle = "任何 .gif 文件，即导即用",
+                filled = false,
                 enabled = !isImporting
-            ) { Text("📷 导入 GIF 动图") }
+            ) { gifLauncher.launch(arrayOf("image/gif")) }
             Spacer(Modifier.height(12.dp))
 
-            OutlinedButton(
-                onClick = { backupLauncher.launch(arrayOf("application/zip")) },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+            ImportOption(
+                icon = "💾",
+                title = "恢复备份",
+                subtitle = "从 DeskPet_backup.zip 一键还原全部宠物",
+                filled = false,
                 enabled = !isImporting
-            ) { Text("💾 恢复备份") }
+            ) { backupLauncher.launch(arrayOf("application/zip")) }
 
             if (isImporting) {
-                Spacer(Modifier.height(16.dp))
-                CircularProgressIndicator()
+                Spacer(Modifier.height(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("正在导入…", style = MaterialTheme.typography.bodyMedium)
+                }
             }
             Spacer(Modifier.height(24.dp))
             TextButton(onClick = onDismiss) { Text("返回") }
+        }
+    }
+}
+
+/** 导入选项卡片：色调图标容器 + 主副标题，M3 Expressive 大圆角 */
+@Composable
+private fun ImportOption(
+    icon: String,
+    title: String,
+    subtitle: String,
+    filled: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        enabled = enabled,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (filled) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerLow
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = if (filled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(icon, style = MaterialTheme.typography.titleLarge)
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (filled) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "›",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
