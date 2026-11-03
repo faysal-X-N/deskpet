@@ -3,14 +3,14 @@ package com.deskpet.ui
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -201,12 +202,11 @@ fun PetListScreen(
 }
 
 /**
- * 底部收纳坞（调研结论）：M3 Expressive 的 FloatingToolbar 是 2026 官方推荐的
- * "多操作收纳"组件——默认收成一条药丸、点按展开；其底层就是 AnimatedVisibility
- * + 弹簧动画这套原语。本实现复刻同款交互而不引入 material3 1.5 的整链升级：
- * 收纳态是一条状态药丸（运行点 + 百分比 + 旋转箭头），展开后露出滑块行与
- * 全宽开关按钮。注：容器高度动画交给 expand/shrinkVertically，不再叠加
- * animateContentSize——两套高度动画叠加会互相抖动。
+ * 底部收纳坞（调研结论 v3）：M3 Expressive FloatingToolbar 官方行为是
+ * "collapse into a single, high-emphasis action"——收纳态不是一条全宽
+ * 药丸，而是一个高强调小圆钮；灵动岛 minimal 形态同理（一个元素 +
+ * 状态点）。本实现：收起 = 56dp 圆钮（展开箭头 + 边缘状态点），
+ * 点按经 AnimatedContent 形变放大成完整面板（滑块 + 开关 + 次要操作行）。
  *
  * 滑块状态逻辑（勿改回旧写法）：value 始终用本地 sliderValue；repo 变化经
  * LaunchedEffect 同步进来、拖动中忽略。不能用 shown = if(dragging) local else
@@ -239,71 +239,103 @@ private fun PetDock(
         }
     }
 
-    // 展开/收起、箭头旋转、圆角形变共用同一 M3 Expressive 弹簧节奏
+    // 展开/收起共用同一 M3 Expressive 弹簧节奏（形变过渡 + 淡入淡出）
     val motion = spring<Float>(dampingRatio = 0.8f, stiffness = 380f)
-    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, motion)
-    val cornerRadius by animateDpAsState(
-        if (expanded) 24.dp else 28.dp,
-        spring(dampingRatio = 0.8f, stiffness = 380f)
-    )
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(cornerRadius),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = 6.dp
-    ) {
-        Column {
-            // —— 收纳态表头（常显）：点按展开/收起 ——
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(
-                            if (isRunning) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outlineVariant,
-                            CircleShape
+    // 收纳态 = 单个小圆钮（M3 FloatingToolbar 官方行为 "collapse into a
+    // single, high-emphasis action"；灵动岛的 minimal 形态同理：一个元素
+    // + 状态点），点按弹簧放大成完整面板。AnimatedContent 负责"圆钮 ↔
+    // 面板"两个形态的形变切换——比单容器 + AnimatedVisibility 更接近
+    // 灵动岛的"容器先动、内容后跟"编排。
+    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        AnimatedContent(
+            targetState = expanded,
+            transitionSpec = {
+                (fadeIn(motion) + scaleIn(initialScale = 0.85f, animationSpec = motion)) togetherWith
+                    (fadeOut(motion) + scaleOut(targetScale = 0.92f, animationSpec = motion))
+            },
+            label = "dockMorph"
+        ) { isExpanded ->
+            if (!isExpanded) {
+                // —— 收纳态：56dp 小圆钮（箭头 + 边缘状态点）——
+                Surface(
+                    onClick = { expanded = true },
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = "展开控制",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(26.dp)
                         )
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (isRunning) "运行中" else "未开启",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "${(sliderValue * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(Modifier.width(10.dp))
-                Icon(
-                    Icons.Default.KeyboardArrowUp,
-                    contentDescription = if (expanded) "收起控制" else "展开控制",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.graphicsLayer { rotationZ = chevronRotation }
-                )
-            }
+                        // 状态点：运行中主色 / 未开启灰色，一眼可读
+                        Box(
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(10.dp)
+                                .background(
+                                    if (isRunning) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outlineVariant,
+                                    CircleShape
+                                )
+                                .border(1.5.dp, MaterialTheme.colorScheme.surfaceContainer, CircleShape)
+                        )
+                    }
+                }
+            } else {
+                // —— 展开态：完整控制面板 ——
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shadowElevation = 6.dp
+                ) {
+                    Column {
+                        // 表头：点按收起
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { expanded = false }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .background(
+                                        if (isRunning) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outlineVariant,
+                                        CircleShape
+                                    )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (isRunning) "运行中" else "未开启",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                "${(sliderValue * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = "收起控制",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
-            // —— 展开内容：滑块行 + 全宽开关按钮 ——
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn(motion) + expandVertically(
-                    spring(dampingRatio = 0.8f, stiffness = 380f)
-                ),
-                exit = fadeOut(motion) + shrinkVertically(
-                    spring(dampingRatio = 0.8f, stiffness = 380f)
-                )
-            ) {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+                        // 控制内容：滑块行 + 全宽开关按钮 + 次要操作行
+                        Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "宠物大小",
@@ -402,6 +434,8 @@ private fun PetDock(
                         DockAction(Icons.Default.Add, "导入") { onImportClick() }
                         DockAction(Icons.Default.Info, "帮助") { onShowHelp() }
                         DockAction(Icons.Default.Share, "备份全部") { onBackupAll() }
+                    }
+                        }
                     }
                 }
             }
