@@ -37,6 +37,13 @@ class AnimationController(
     val currentFrame: StateFlow<Frame?> = _frame
     /** 动画循环在 Main 线程读、reload 在 IO 线程写，必须 volatile 保证可见性 */
     @Volatile private var frameSeq = 0L
+
+    /**
+     * 系统省电模式联动（由 Service 的广播接收器维护）：
+     * 用户主动开启省电 = 明确在乎电量，此时帧率自动减半（播放 5→2.5FPS、
+     * 待机 2→1FPS），桌宠变成"用电良民"；平时体验完全不变。
+     */
+    @Volatile var powerSaveMode = false
     private val _w = MutableStateFlow(PetEngine.DEFAULT_PET_WIDTH)
     val petWidth: StateFlow<Int> = _w
     private val _h = MutableStateFlow(PetEngine.DEFAULT_PET_HEIGHT)
@@ -102,9 +109,11 @@ class AnimationController(
                         }
                     }
                 }
-                // Codex Pet 待机时降到 2FPS 省电；GIF 没有状态机，始终按动画帧率播放
+                // Codex Pet 待机时降到 2FPS 省电；GIF 没有状态机，始终按动画帧率播放。
+                // 系统省电模式下整体再减半（播放 2.5FPS / 待机 1FPS）
                 val idle = _state.value == PetAnimationState.IDLE && isCodexPet()
-                val ns = if (idle) IDLE_FRAME_INTERVAL_NS else ANIM_FRAME_INTERVAL_NS
+                var ns = if (idle) IDLE_FRAME_INTERVAL_NS else ANIM_FRAME_INTERVAL_NS
+                if (powerSaveMode) ns *= 2
                 delay(((ns - (System.nanoTime() - lt)).coerceAtLeast(MIN_FRAME_DELAY_NS)) / 1_000_000)
                 lt = System.nanoTime()
             }

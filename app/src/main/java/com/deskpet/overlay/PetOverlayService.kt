@@ -55,13 +55,31 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     private var savedScale = 1f
     private val sc = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    /** 亮灭屏状态：省电广播到来时需要据此决定是否恢复自主行为（灭屏时不能开） */
+    @Volatile private var screenOn = true
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: android.content.Context?, i: Intent?) {
-            if (::anim.isInitialized) when (i?.action) {
+            if (!::anim.isInitialized) return
+            val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+            when (i?.action) {
                 // 灭屏把动画循环和自主行为一起停，否则 auto 会在灭屏期间切状态，
                 // 亮屏后宠物会播放一段"没来由"的动作
-                Intent.ACTION_SCREEN_OFF -> { anim.stop(); auto?.stop() }
-                Intent.ACTION_SCREEN_ON -> { anim.start(); auto?.start() }
+                Intent.ACTION_SCREEN_OFF -> { screenOn = false; anim.stop(); auto?.stop() }
+                Intent.ACTION_SCREEN_ON -> {
+                    screenOn = true
+                    anim.start()
+                    // 省电模式下自主乱跑属于"非必要活动"，不开
+                    if (!pm.isPowerSaveMode) auto?.start()
+                }
+                // 系统省电开关切换（官方 isPowerSaveMode + 广播的标准联动）：
+                // 帧率减半交给 AnimationController.powerSaveMode；自主行为
+                // 按需停/恢复（恢复仅限亮屏状态）
+                android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                    anim.powerSaveMode = pm.isPowerSaveMode
+                    if (pm.isPowerSaveMode) auto?.stop()
+                    else if (screenOn) auto?.start()
+                }
             }
         }
     }
@@ -143,10 +161,16 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
+            addAction(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }
         androidx.core.content.ContextCompat.registerReceiver(
             this, screenReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
+        // 注册时同步一次省电状态：服务可能在省电模式已开启时才启动
+        if (::anim.isInitialized) {
+            val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
+            anim.powerSaveMode = pm.isPowerSaveMode
+        }
     }
 
     private fun startForeground() {

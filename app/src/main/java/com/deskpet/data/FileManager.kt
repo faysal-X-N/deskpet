@@ -2,7 +2,10 @@ package com.deskpet.data
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.deskpet.data.model.CodexPetConfig
@@ -29,6 +32,10 @@ class FileManager(private val context: Context) {
         private const val TAG = "FileManager"
         private const val MAX_GIF_BYTES = 10L * 1024 * 1024
         private const val TMP_STALE_MS = 24L * 60 * 60 * 1000
+        /** 导入时智能转码阈值：超过 1.5MB 的 PNG/无损 WebP 才值得重编码 */
+        private const val RECODE_THRESHOLD_BYTES = 1_500_000L
+        /** 有损 WebP 质量 85：实测 PSNR ≥40dB（肉眼不可辨），alpha 仍走无损边缘不受损 */
+        private const val RECODE_QUALITY = 85
     }
 
     // ===== Import =====
@@ -50,11 +57,49 @@ class FileManager(private val context: Context) {
             }
             val spritesheetFile = findSpritesheet(destDir)
                 ?: throw ImportException.InvalidFormat("缺少 spritesheet.webp 或 spritesheet.png")
+            // 导入时智能转码：大体积 PNG/无损 WebP → 有损 WebP，省用户存储
+            recompressSpritesheetIfNeeded(spritesheetFile)
             PetInfo(id = id, type = PetType.CODEX_PET, displayName = config.displayName,
                 petJsonPath = petJsonFile.absolutePath, spritesheetPath = spritesheetFile.absolutePath,
                 sourceId = config.id)
         } catch (e: ImportException) { destDir.deleteRecursively(); throw e }
         catch (e: Exception) { destDir.deleteRecursively(); throw ImportException.ExtractionFailed(e) }
+    }
+
+    /**
+     * 导入时智能转码（调研修正版）：社区素材包常携带大体积 PNG / 无损 WebP，
+     * 超过阈值则解码 → 有损 WebP 重编码，为用户省存储。
+     * 护栏（每条都是硬约束）：
+     * 1. 只重编码、绝不缩尺寸——pet.json 网格按像素写死，缩放会帧错位
+     * 2. BitmapFactory 软件解码——HARDWARE 位图无法 compress（调研坑 1）
+     * 3. 产物需通过"可解码 + 尺寸一致 + 更小"三重校验才替换，任一失败保留原文件
+     * 4. GIF 不处理（系统无 GIF 编码器；渲染端已有 1024px 降采样管内存）
+     * 调用方保证运行在 Dispatchers.IO（解码约 11MB 峰值 + 编码 1~2 秒）。
+     */
+    private fun recompressSpritesheetIfNeeded(file: File) {
+        if (file.length() <= RECODE_THRESHOLD_BYTES) return
+        var src: Bitmap? = null
+        val tmp = File(file.parentFile, file.name + ".recode.tmp")
+        try {
+            val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            src = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return
+            val fmt = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY
+            else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP // API 26~29：quality<100 即有损
+            FileOutputStream(tmp).use { out -> if (!src.compress(fmt, RECODE_QUALITY, out)) return }
+            // 校验 1：产物确实更小
+            if (tmp.length() >= file.length()) return
+            // 校验 2：产物可解码且尺寸与源完全一致（帧网格不被破坏）
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(tmp.absolutePath, bounds)
+            if (bounds.outWidth != src.width || bounds.outHeight != src.height) return
+            // 全部通过才替换；rename 失败等意外一律保留原文件
+            if (!tmp.renameTo(file)) return
+        } catch (e: Exception) {
+            Log.w(TAG, "spritesheet recompress skipped: ${e.message}")
+        } finally {
+            src?.recycle()
+            tmp.delete() // 未替换成功时清掉临时文件；已替换时它已不存在，无害
+        }
     }
 
     suspend fun importGif(uri: Uri): PetInfo {

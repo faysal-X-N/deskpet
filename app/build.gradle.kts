@@ -29,11 +29,16 @@ android {
         versionCode = 2
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // 语言资源过滤：应用 UI 只有中文（默认 values/），依赖库却携带几十种
+        // 语言的翻译资源，全部裁掉，resources.arsc 与 res/ 同步瘦身
+        resourceConfigurations += listOf("zh", "en")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            // 资源收缩（官方要求与 minify 成对开启）：移除 R8 判定为未引用的资源
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // 仅在 CI 提供了 keystore 时才做正式签名，否则产出未签名 APK
             if (System.getenv("SIGNING_STORE_FILE") != null) {
@@ -66,9 +71,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    // 图标只用精简核心集（Add/Check/Close/Info/PlayArrow/Refresh/Share/
+    // KeyboardArrow* 均在其中）；extended 大库已移除——避免 R8 扫描几千个
+    // 未使用图标类，DEX 更小、构建更快
     implementation("androidx.compose.material:material-icons-core")
-    // 完整图标集（Close/PlayArrow/Refresh/Info 等），release 由 R8 裁剪到只保留用到的
-    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
 
     // Activity Compose
