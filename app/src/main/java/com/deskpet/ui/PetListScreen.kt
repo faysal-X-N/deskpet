@@ -226,9 +226,13 @@ private fun PetDock(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var sliderValue by remember { mutableFloatStateOf(curScale) }
+    // 初值与同步都夹取到合法区间：万一存储里有历史脏值（超出 0.5~5），
+    // M3 Slider 收到范围外的 value 会异常，这里做 UI 层最后防线
+    var sliderValue by remember { mutableFloatStateOf(curScale.coerceIn(MIN_SCALE_UI, MAX_SCALE_UI)) }
     var dragging by remember { mutableStateOf(false) }
-    LaunchedEffect(curScale) { if (!dragging) sliderValue = curScale }
+    LaunchedEffect(curScale) {
+        if (!dragging) sliderValue = curScale.coerceIn(MIN_SCALE_UI, MAX_SCALE_UI)
+    }
 
     fun nudge(delta: Float) {
         val nv = (sliderValue + delta).coerceIn(MIN_SCALE_UI, MAX_SCALE_UI)

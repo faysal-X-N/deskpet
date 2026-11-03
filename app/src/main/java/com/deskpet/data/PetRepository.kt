@@ -100,6 +100,9 @@ class PetRepository(private val petStore: IPetStore) {
     }
 
     suspend fun setScale(petId: String, scale: Float) {
+        // 存储层兜底夹取：与 UI 滑块 / 悬浮窗捏合的 0.5~5 保持一致，
+        // 防止任何未来调用方写入范围外的脏值
+        val scale = scale.coerceIn(0.5f, 5f)
         writeMutex.withLock {
             val currentList = petStore.petListFlow.first().toMutableList()
             val index = currentList.indexOfFirst { it.id == petId }
