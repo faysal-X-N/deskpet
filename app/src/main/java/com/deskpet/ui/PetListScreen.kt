@@ -166,10 +166,11 @@ fun PetListScreen(
                 columns = GridCells.Adaptive(minSize = 120.dp),
                 // 网格先避让导航条，再留收纳坞的高度（坞=12dp 边距+约 44dp 药丸，
                 // 88dp 余量保证最后一行卡片在收纳态不被遮挡）；
-                // 横屏时右缘再留竖坞宽度（约 116dp + 12dp 边距），避免卡片压在坞下
+                // 横屏时右缘再留竖坞宽度（展开面板 124dp + 12dp 边距 = 136dp，
+                // 留 144dp 含余量），避免最后一列卡片压在面板底下
                 contentPadding = PaddingValues(
                     bottom = 88.dp,
-                    end = if (isLandscape) 132.dp else 0.dp
+                    end = if (isLandscape) 144.dp else 0.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -296,13 +297,22 @@ private fun PetDock(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 // —— 收纳态内容：56dp 圆钮（箭头 + 边缘状态点）。
-                // 收起时圆钮内容先淡出、容器随后缩回，两段式退场 ——
+                // 整个 56dp 都可点（v4 重构时曾漏掉点击回调导致无法展开，
+                // 测试期由人工点按发现）——
                 AnimatedVisibility(
                     visible = !expanded,
                     enter = fadeIn(tween(140, delayMillis = 90)),
                     exit = fadeOut(tween(70))
                 ) {
-                    Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .size(56.dp)
+                            .clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                                expanded = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             if (vertical) Icons.Default.KeyboardArrowLeft else Icons.Default.KeyboardArrowUp,
                             contentDescription = "展开控制",
