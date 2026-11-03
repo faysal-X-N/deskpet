@@ -25,8 +25,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -110,7 +112,14 @@ fun PetListScreen(
         )
     }
 
-    Box(Modifier.fillMaxSize().statusBarsPadding()) {
+    // 顶部 + 左右用 safeDrawing（= 状态栏与刘海/挖孔的并集，自动取大者，
+    // 竖屏不会双重留白）：横屏时挖孔在左右两侧，只有 statusBarsPadding
+    // 挡不住——右缘的收纳坞和网格卡片都会钻进刘海底下（触摸也会被吃掉）
+    Box(
+        Modifier.fillMaxSize().windowInsetsPadding(
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        )
+    ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp)) {
             // 顶栏（M3 规范："app bar 最多 1-2 个操作，能不用溢出菜单就不用，
             // 操作多就放进 toolbar"）：本页所有操作都在底部收纳坞，顶栏零图标
@@ -167,9 +176,11 @@ fun PetListScreen(
                 // 网格先避让导航条，再留收纳坞的高度（坞=12dp 边距+约 44dp 药丸，
                 // 88dp 余量保证最后一行卡片在收纳态不被遮挡）；
                 // 横屏时右缘再留竖坞宽度（展开面板 124dp + 12dp 边距 = 136dp，
-                // 留 144dp 含余量），避免最后一列卡片压在面板底下
+                // 留 144dp 含余量），避免最后一列卡片压在面板底下；
+                // 横屏坞不在底部，88dp 的底部预留改为 12dp 收边，
+                // 把垂直空间还给本来就紧张的横屏
                 contentPadding = PaddingValues(
-                    bottom = 88.dp,
+                    bottom = if (isLandscape) 12.dp else 88.dp,
                     end = if (isLandscape) 144.dp else 0.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -343,7 +354,8 @@ private fun PetDock(
                 ) {
                     if (!vertical) {
                         // ===== 竖屏：横条面板（表头 + 滑块 + 开关 + 次要操作行）=====
-                        Column {
+                        // verticalScroll：分屏/矮窗口下内容超高时可滚，不裁切
+                        Column(Modifier.verticalScroll(rememberScrollState())) {
                             // 表头：点按收起
                             Row(
                                 Modifier
@@ -472,8 +484,13 @@ private fun PetDock(
                         }
                     } else {
                         // ===== 横屏：右缘竖条面板（状态 + 竖滑块 + 开关 + 图标列）=====
+                        // 小屏横屏/分屏时窗口高可低至 ~300dp，面板 ~300dp 会溢出
+                        // 屏幕上下边界——verticalScroll 让它在矮窗口里滚动兜底
                         Column(
-                            Modifier.width(124.dp).padding(horizontal = 10.dp, vertical = 12.dp),
+                            Modifier
+                                .width(124.dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 10.dp, vertical = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             // 状态行：点按收起（圆钮箭头朝左，这里点任意处收回）
