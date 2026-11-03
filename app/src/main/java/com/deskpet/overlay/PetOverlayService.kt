@@ -91,6 +91,9 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         // clamp 截断后实际生效的比例，位置补偿必须用它，否则锚点会漂
         val applied = if (savedScale > 0f) ns / savedScale else 1f
         savedScale = ns
+        // 先更新尺寸（petWidth 状态同步生效），后续 clampPosition 才能用新尺寸
+        // 把放大后的窗口夹回屏幕内，而不是放行一帧溢出
+        anim.setScale(ns)
         if (applied != 1f) {
             // 以双指中心（centroid）为锚点缩放：窗口尺寸从 W 变为 W*applied 时，
             // 把窗口左上角反向平移 focus*(1-applied)，手指夹住的点保持不动。
@@ -99,7 +102,6 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             wy += focusY * (1f - applied)
             updatePosition()
         }
-        anim.setScale(ns)
         auto?.onUserTouch()
     }
 
@@ -317,7 +319,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         OverlayState.setRunning(id)
     }
 
-    /** 悬浮窗运行期间跟随仓库里的缩放值（界面上的 50%~300% 按钮）*/
+    /** 悬浮窗运行期间跟随仓库里的缩放值（界面上的缩放滑块）*/
     private fun observeScale(id: String) {
         scaleJob?.cancel()
         scaleJob = sc.launch {
@@ -386,7 +388,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         cv?.let { v ->
             (v.layoutParams as? WindowManager.LayoutParams)?.let { p ->
                 p.x = wx.toInt()
-                p.y = wy.toInt()
+                p.y = (wy + bounceOffset).toInt()
                 try {
                     wm.updateViewLayout(v, p)
                 } catch (e: Exception) {
@@ -400,7 +402,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         val p = displaySize()
         val w = anim.petWidth.value
         val h = anim.petHeight.value
-        wx = wx.coerceIn((-w + 32).toFloat(), (p.x - 32).toFloat())
+        // 允许宠物留一部分在屏幕外，但必须留出"把手"能拖回来。
+        // 旧代码硬编码 32px，高分屏（3x 密度）上只有约 10dp，几乎抓不住。
+        val margin = 24f * resources.displayMetrics.density
+        wx = wx.coerceIn((-w + margin), (p.x - margin))
         wy = wy.coerceIn(0f, (p.y - h / 2f).coerceAtLeast(0f))
     }
 
@@ -419,16 +424,20 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     /** 单击 GIF 宠物的弹跳反馈。同一时间只允许一个弹跳：
      *  旧实现并发协程各自捕获基准 wy，连点会导致位置永久漂移（每次 +20px 漂向一边）。 */
     private var bounceJob: Job? = null
+    /** 弹跳的瞬时视觉偏移（px）。只影响渲染窗口位置，绝不写入 wy——
+     *  旧实现 delay 后把 wy 硬改回旧值，100ms 窗口内的拖拽/缩放会被静默丢弃。 */
+    @Volatile
+    private var bounceOffset = 0f
+
     private fun bounce() {
         if (bounceJob?.isActive == true) return
         bounceJob = sc.launch {
-            val o = wy
             try {
-                wy = o - 20
+                bounceOffset = -8f * resources.displayMetrics.density
                 updatePosition()
                 delay(100)
             } finally {
-                wy = o
+                bounceOffset = 0f
                 updatePosition()
             }
         }

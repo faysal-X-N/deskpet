@@ -75,6 +75,10 @@ class GestureHandler(
                             }
                             // 消费全部按下指针，防止 tap 检测器把松开当点击
                             event.changes.forEach { it.consume() }
+                        } else if (scaled) {
+                            // 缩放已经发生后，剩余的单指事件继续消费到手势结束，
+                            // 否则轻捏（移动少）松手时 tap 检测器会误触发一次"点击招手"
+                            event.changes.forEach { it.consume() }
                         }
                     } while (event.changes.any { it.pressed })
                     if (scaled) onDragEnd()
