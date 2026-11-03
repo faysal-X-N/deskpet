@@ -95,7 +95,8 @@ fun ImportScreen(
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).statusBarsPadding().padding(24.dp),
+            // Scaffold 的 padding 已含状态栏 inset，再叠 statusBarsPadding 会双重留白
+            Modifier.fillMaxSize().padding(padding).padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

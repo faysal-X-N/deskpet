@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -49,6 +50,9 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 全屏沉浸：内容延伸到状态栏后面（主题里只改图标明暗不够，
+        // 必须在 DecorView 建立前调用，否则低版本系统仍是老式实色状态栏）
+        enableEdgeToEdge()
         setContent { DeskPetTheme { App((application as DeskPetApp).petRepository) } }
     }
 
@@ -222,7 +226,7 @@ class MainActivity : ComponentActivity() {
                     // 导入
                     Text("📦 导入 Codex 宠物", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
-                    Text("应用内置了 7 只示例宠物。你也可以导入更多：\n1. 点击底部「导入」按钮\n2. 选择「🎨 导入 Codex Pet 素材包」\n3. 选取下载的 .zip 文件")
+                    Text("应用内置了 8 只示例宠物。你也可以导入更多：\n1. 点击底部「导入」按钮\n2. 选择「🎨 导入 Codex Pet 素材包」\n3. 选取下载的 .zip 文件")
 
                     Spacer(Modifier.height(8.dp))
                     Text("从哪里下载 Codex 宠物？", fontWeight = FontWeight.Bold)
