@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+# 打 v 标签时需要写权限才能创建 GitHub Release 并上传 APK
+permissions:
+  contents: write
+
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
