@@ -25,6 +25,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.deskpet.R
 import com.deskpet.data.PetRepository
 import com.deskpet.data.model.DragDirection
 import com.deskpet.data.model.PetAnimationState
@@ -217,7 +218,11 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             val ntf = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("桌面宠物")
                 .setContentText("正在运行")
-                .setSmallIcon(android.R.drawable.ic_menu_gallery)
+                // 自有白色剪影小图标（状态栏/通知栏单色规范）；旧代码用的
+                // android.R.drawable.ic_menu_gallery 是系统图库图标占位
+                .setSmallIcon(R.drawable.ic_stat_pet)
+                // 通知栏展开时显示彩色橘团大图（状态栏小图标按规范只能是单色剪影）
+                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(resources, R.drawable.ic_notif_large))
                 .setContentIntent(contentIntent)
                 .setOngoing(true)
                 // 通知栏直接关闭宠物，不用回到 App 点「关闭」
