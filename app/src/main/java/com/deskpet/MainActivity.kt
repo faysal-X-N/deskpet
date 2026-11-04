@@ -112,8 +112,6 @@ class MainActivity : ComponentActivity() {
         val latestActiveId by rememberUpdatedState(activeId)
         val latestPendingStart by rememberUpdatedState(pendingStart)
         val autoResume by repo.overlayAutoResume().collectAsStateWithLifecycle(false)
-        val latestAutoResume by rememberUpdatedState(autoResume)
-        val latestOverlayRunning by rememberUpdatedState(overlayRunning)
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         DisposableEffect(lifecycle) {
             val observer = LifecycleEventObserver { _, event ->
@@ -130,20 +128,34 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                // 自动恢复：上次是"想看"状态但进程已被系统/ROM 杀掉
-                //（悬浮窗服务死亡时无回调，只有意图标志还留着 true）。
-                // running 是非空 Boolean：false = 没在显示。运行中或用户已
-                // 主动关闭（标志 false）都不动。
-                // 不顺带申请通知权限：自动恢复是后台还原动作，不该冷不丁弹窗
-                if (event == Lifecycle.Event.ON_RESUME && !latestPendingStart &&
-                    latestAutoResume && !latestOverlayRunning &&
-                    Settings.canDrawOverlays(this@MainActivity)
-                ) {
-                    latestActiveId?.let { startOverlay(it) }
-                }
             }
             lifecycle.addObserver(observer)
             onDispose { lifecycle.removeObserver(observer) }
+        }
+
+        // 自动恢复必须状态驱动、不能绑 ON_RESUME 事件：autoResume 标志从
+        // DataStore 异步加载（初始 false），冷启动时 ON_RESUME 可能抢在
+        // 值送达之前触发——表现为偶发"打开 App 宠物没回来，再切一次才回"。
+        // 状态驱动则值一到、条件齐即恢复，与到达时机无关。
+        // consumed 防重复：startService 后服务加载素材需要几百毫秒才报告
+        // running=true，此窗口内 autoResume 已变 true 而条件仍满足，无保护
+        // 会重复 startService 导致同宠物重载闪烁。标志变 false（主动关闭）
+        // 时重置，下次开启仍可恢复。
+        val lifecycleState by lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+        var autoResumeConsumed by remember { mutableStateOf(false) }
+        LaunchedEffect(
+            lifecycleState, autoResume, overlayRunning, pendingStart, activeId
+        ) {
+            if (!autoResume) autoResumeConsumed = false
+            if (!autoResumeConsumed && autoResume && !overlayRunning && !pendingStart &&
+                lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
+                Settings.canDrawOverlays(this@MainActivity)
+            ) {
+                activeId?.let {
+                    autoResumeConsumed = true
+                    startOverlay(it)
+                }
+            }
         }
 
         if (isFirstLaunch == true || showHelp) {
