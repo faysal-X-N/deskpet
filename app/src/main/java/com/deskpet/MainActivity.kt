@@ -132,15 +132,14 @@ class MainActivity : ComponentActivity() {
                 }
                 // 自动恢复：上次是"想看"状态但进程已被系统/ROM 杀掉
                 //（悬浮窗服务死亡时无回调，只有意图标志还留着 true）。
-                // 运行中（running != null）或用户已主动关闭（标志 false）都不动
+                // running 是非空 Boolean：false = 没在显示。运行中或用户已
+                // 主动关闭（标志 false）都不动。
+                // 不顺带申请通知权限：自动恢复是后台还原动作，不该冷不丁弹窗
                 if (event == Lifecycle.Event.ON_RESUME && !latestPendingStart &&
-                    latestAutoResume && latestOverlayRunning == null &&
+                    latestAutoResume && !latestOverlayRunning &&
                     Settings.canDrawOverlays(this@MainActivity)
                 ) {
-                    latestActiveId?.let {
-                        requestNotificationPermissionIfNeeded()
-                        startOverlay(it)
-                    }
+                    latestActiveId?.let { startOverlay(it) }
                 }
             }
             lifecycle.addObserver(observer)

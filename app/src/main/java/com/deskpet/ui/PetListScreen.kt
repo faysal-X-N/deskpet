@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -324,8 +325,9 @@ private fun PetDock(
                             },
                         contentAlignment = Alignment.Center
                     ) {
+                        // AutoMirrored：RTL 语言下箭头自动镜像，方向始终正确
                         Icon(
-                            if (vertical) Icons.Default.KeyboardArrowLeft else Icons.Default.KeyboardArrowUp,
+                            if (vertical) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.Default.KeyboardArrowUp,
                             contentDescription = "展开控制",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(26.dp)

@@ -85,6 +85,10 @@ class SpritesheetParser {
         ensureCache(spritesheetPath)
         if (cachedDecoder == null || cachedDecoder?.isRecycled == true) {
             cachedDecoder = try {
+                // 路径重载在 API 31 起标记弃用（官方建议 ImageDecoder），但
+                // ImageDecoder 不支持区域解码；fd 重载要求持有打开的流，语义
+                // 更绕。此 API 长期稳定，保留并在声明处抑制弃用提示
+                @Suppress("DEPRECATION")
                 BitmapRegionDecoder.newInstance(spritesheetPath, false)
             } catch (e: Exception) { Log.w(TAG, "Failed to create RegionDecoder", e); null }
         }

@@ -68,11 +68,15 @@ class FileManager(private val context: Context) {
                 File(config.spritesheetPath).name == foundSheet.name
             ) {
                 try {
-                    val newRef = petJsonFile.parentFile.toPath()
-                        .relativize(spritesheetFile.toPath()).toString().replace('\\', '/')
-                    val tmp = File(petJsonFile.parentFile, petJsonFile.name + ".sync.tmp")
-                    tmp.writeText(json.encodeToString(CodexPetConfig.serializer(), config.copy(spritesheetPath = newRef)))
-                    if (!tmp.renameTo(petJsonFile)) tmp.delete()
+                    // parentFile 理论可空（findPetJson 总在 destDir 下，实际必有父目录，
+                    // 但不赌运行时）：拿不到父目录就放弃同步，不影响导入
+                    petJsonFile.parentFile?.let { parent ->
+                        val newRef = parent.toPath()
+                            .relativize(spritesheetFile.toPath()).toString().replace('\\', '/')
+                        val tmp = File(parent, petJsonFile.name + ".sync.tmp")
+                        tmp.writeText(json.encodeToString(CodexPetConfig.serializer(), config.copy(spritesheetPath = newRef)))
+                        if (!tmp.renameTo(petJsonFile)) tmp.delete()
+                    }
                 } catch (t: Throwable) {
                     // 同步失败不影响导入：本 App 用 PetInfo.spritesheetPath，不读这个字段
                     Log.w(TAG, "pet.json spritesheetPath sync skipped: ${t.message}")
