@@ -6,6 +6,7 @@ import com.deskpet.data.model.PetInfo
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.withLock
 
 class AnimationController(
     private val petEngine: PetEngine,
@@ -74,9 +75,17 @@ class AnimationController(
         return true
     }
 
-    fun reload(p: PetInfo): Boolean {
+    /**
+     * 重载宠物。必须串行化：reload 是纯阻塞函数（无挂起点），协程取消
+     * 不能中断它——快速连续切换宠物时，旧协程的 reload 会和新协程的
+     * reload 并发交错（loader 互相覆盖、引擎资源双重释放、最终显示错误
+     * 的宠物）。Mutex 保证按调用顺序完整执行，最后一个 caller 胜出。
+     */
+    private val reloadMutex = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun reload(p: PetInfo): Boolean = reloadMutex.withLock {
         stop()
-        return load(p)
+        load(p)
     }
 
     fun start() {

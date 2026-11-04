@@ -318,7 +318,12 @@ class FileManager(private val context: Context) {
                     if (!ZipExtractor.isPetJsonSizeOk(petJsonFile)) throw ImportException.InvalidFormat("pet.json 文件过大")
                     val id = java.util.UUID.randomUUID().toString()
                     val destDir = File(context.filesDir, "pets/$id").also { it.mkdirs() }
-                    tmpDir.copyRecursively(destDir, true)
+                    // 与多宠物路径同标准：copyRecursively 静默跳过失败项，
+                    // 磁盘满会"恢复成功"但文件缺失，必须检查返回值
+                    if (!tmpDir.copyRecursively(destDir, true)) {
+                        destDir.deleteRecursively()
+                        throw ImportException.ExtractionFailed(RuntimeException("恢复文件时失败（存储空间不足？）"))
+                    }
                     val spritesheetFile = findSpritesheet(destDir)
                         ?: throw ImportException.InvalidFormat("备份中缺少 spritesheet")
                     val config: CodexPetConfig = try {

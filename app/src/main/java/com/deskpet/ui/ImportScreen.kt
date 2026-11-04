@@ -18,8 +18,16 @@ import com.deskpet.data.PetRepository
 import com.deskpet.data.model.ImportException
 import com.deskpet.data.model.PetInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** 导入结果：数据管道在 NonCancellable 区跑完，把结论带回可取消的 UI 区 */
+private sealed class ImportResult {
+    data class Success(val pet: PetInfo) : ImportResult()
+    object Duplicate : ImportResult()
+    data class Failure(val error: ImportException) : ImportResult()
+}
 
 @Composable
 fun ImportScreen(
@@ -39,27 +47,44 @@ fun ImportScreen(
      * 统一的导入流程。
      * 注意：addPet() 会生成新的 UUID，之后必须用**返回的** pet 设置选中，
      * 否则 activePetId 指向一个不存在的 id，界面上点「开启」会什么都不发生。
+     *
+     * 数据管道必须 NonCancellable：导入中旋转/切深色模式会重建 Activity，
+     * rememberCoroutineScope 随组合销毁被取消——zip 可能已解压完但 addPet
+     * 没执行，磁盘上留下永远删不掉的孤儿目录。管道整体不可取消，跑完再
+     * 回可取消区做 UI 反馈（UI 上下文已取消时 snackbar 静默跳过，无副作用）。
      */
     fun runImport(uri: Uri, importer: suspend (Uri) -> PetInfo) {
         scope.launch {
             isImporting = true
             try {
-                // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
-                val imported = withContext(Dispatchers.IO) { importer(uri) }
-                if (petRepository.existsBySourceId(imported.sourceId)) {
-                    // 文件已经解压到磁盘了，重复导入要把它们清掉，避免残留
-                    withContext(Dispatchers.IO) { fileManager.deletePet(imported) }
-                    snackbarHostState.showSnackbar("该宠物已存在")
-                    return@launch
+                val result = withContext(NonCancellable) {
+                    try {
+                        // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
+                        val imported = withContext(Dispatchers.IO) { importer(uri) }
+                        if (petRepository.existsBySourceId(imported.sourceId)) {
+                            // 文件已经解压到磁盘了，重复导入要把它们清掉，避免残留
+                            withContext(Dispatchers.IO) { fileManager.deletePet(imported) }
+                            ImportResult.Duplicate
+                        } else {
+                            val added = petRepository.addPet(imported)
+                            petRepository.setActivePet(added.id)
+                            ImportResult.Success(added)
+                        }
+                    } catch (e: ImportException) {
+                        ImportResult.Failure(e)
+                    } catch (e: Exception) {
+                        ImportResult.Failure(ImportException.ExtractionFailed(e))
+                    }
                 }
-                val added = petRepository.addPet(imported)
-                petRepository.setActivePet(added.id)
-                snackbarHostState.showSnackbar("导入成功：${added.displayName}")
-                onImportSuccess()
-            } catch (e: ImportException) {
-                snackbarHostState.showSnackbar(e.message ?: "导入失败")
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar("导入失败：${e.message}")
+                when (result) {
+                    is ImportResult.Success -> {
+                        snackbarHostState.showSnackbar("导入成功：${result.pet.displayName}")
+                        onImportSuccess()
+                    }
+                    ImportResult.Duplicate -> snackbarHostState.showSnackbar("该宠物已存在")
+                    is ImportResult.Failure ->
+                        snackbarHostState.showSnackbar(result.error.message ?: "导入失败")
+                }
             } finally {
                 isImporting = false
             }
@@ -74,24 +99,27 @@ fun ImportScreen(
         uri?.let { runImport(it) { u -> fileManager.importGif(u) } }
     }
 
-    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri?.let {
-            scope.launch {
-                isImporting = true
-                try {
-                    withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
-                    snackbarHostState.showSnackbar("恢复完成")
-                    onImportSuccess()
-                } catch (e: ImportException) {
-                    snackbarHostState.showSnackbar(e.message ?: "恢复失败")
-                } catch (e: Exception) {
-                    snackbarHostState.showSnackbar("恢复失败：${e.message}")
-                } finally {
-                    isImporting = false
+            val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+                uri?.let {
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            // 同 runImport：恢复的数据管道不可取消，防孤儿文件
+                            withContext(NonCancellable) {
+                                withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
+                            }
+                            snackbarHostState.showSnackbar("恢复完成")
+                            onImportSuccess()
+                        } catch (e: ImportException) {
+                            snackbarHostState.showSnackbar(e.message ?: "恢复失败")
+                        } catch (e: Exception) {
+                            snackbarHostState.showSnackbar("恢复失败：${e.message}")
+                        } finally {
+                            isImporting = false
+                        }
+                    }
                 }
             }
-        }
-    }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         Column(
@@ -145,7 +173,9 @@ fun ImportScreen(
                 }
             }
             Spacer(Modifier.height(24.dp))
-            TextButton(onClick = onDismiss) { Text("返回") }
+            // 导入中禁用返回：中途退出组合会取消协程，虽然数据管道已 NonCancellable
+            // 兜底，但用户会失去结果反馈，不如等它跑完
+            TextButton(onClick = onDismiss, enabled = !isImporting) { Text("返回") }
         }
     }
 }

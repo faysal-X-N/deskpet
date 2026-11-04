@@ -270,6 +270,11 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
                     return@launch
                 }
                 show(id)
+            } catch (e: CancellationException) {
+                // 被新的启动请求取消（快速连续切换宠物）属正常流程：
+                // 新协程会接管加载。绝不能在这里 stopSelf，否则会把
+                // 正在加载新宠物的服务整个停掉（宠物消失）
+                return@launch
             } catch (e: Exception) {
                 Log.e(TAG, "show failed", e)
                 Toast.makeText(this@PetOverlayService, "启动失败: ${e.message}", Toast.LENGTH_LONG).show()
