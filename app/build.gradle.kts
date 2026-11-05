@@ -26,8 +26,8 @@ android {
         applicationId = "com.deskpet"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 语言资源过滤：应用 UI 只有中文（默认 values/），依赖库却携带几十种
         // 语言的翻译资源，全部裁掉，resources.arsc 与 res/ 同步瘦身

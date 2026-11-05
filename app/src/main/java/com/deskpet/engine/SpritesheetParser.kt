@@ -161,7 +161,7 @@ class SpritesheetParser {
                     }
                 }
                 if (bmp == null) {
-                    val fresh = Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888)
+                    val fresh = androidx.core.graphics.createBitmap(dw, dh, Bitmap.Config.ARGB_8888)
                     bmp = try {
                         decoder.decodeRegion(rect, BitmapFactory.Options().apply {
                             inPreferredConfig = Bitmap.Config.ARGB_8888

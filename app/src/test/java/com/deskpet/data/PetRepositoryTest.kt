@@ -206,4 +206,30 @@ class PetRepositoryTest {
         assertEquals("First", pets[0].displayName)
         assertEquals("Second", pets[1].displayName)
     }
+
+    // ===== addPetDirect：示例加载 / 备份恢复入口（必须幂等）=====
+
+    @Test
+    fun `addPetDirect is idempotent for the same id`() = runTest {
+        // 首次启动加载 assets 时旋转屏幕，重建的 LaunchedEffect 会再跑一遍；
+        // 备份恢复也可能遇到已存在的 id。重复写入会让列表出现两个同 id 项，
+        // LazyVerticalGrid(items(key = { it.id })) 直接抛 "Key was already used"
+        val pet = testPet(id = "jutuan", sourceId = "jutuan")
+        repo.addPetDirect(pet)
+        repo.addPetDirect(pet)
+
+        val pets = store.petListFlow.first()
+        assertEquals(1, pets.size)
+        assertEquals("jutuan", pets[0].id)
+    }
+
+    @Test
+    fun `addPetDirect keeps original id and insertion order`() = runTest {
+        repo.addPetDirect(testPet(id = "a", displayName = "A"))
+        repo.addPetDirect(testPet(id = "b", displayName = "B"))
+
+        val pets = store.petListFlow.first()
+        assertEquals(listOf("a", "b"), pets.map { it.id })
+        assertEquals(listOf("A", "B"), pets.map { it.displayName })
+    }
 }

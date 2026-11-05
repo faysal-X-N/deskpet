@@ -111,20 +111,30 @@ class MainActivity : ComponentActivity() {
         // 否则 effect 只创建一次，捕获到的 activeId 还停留在首次组合时的 null）
         val latestActiveId by rememberUpdatedState(activeId)
         val latestPendingStart by rememberUpdatedState(pendingStart)
+        val latestRunning by rememberUpdatedState(overlayRunning)
         val autoResume by repo.overlayAutoResume().collectAsStateWithLifecycle(false)
         val lifecycle = LocalLifecycleOwner.current.lifecycle
         DisposableEffect(lifecycle) {
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME && latestPendingStart) {
-                    // 无论授权与否都清掉待启动标记：
-                    //  - 已授权 → 立即续上开启流程
-                    //  - 未授权 → 用户放弃了这次操作，不清掉的话之后任何一次授权
-                    //    （哪怕与本次操作无关）都会让宠物"凭空出现"
-                    pendingStart = false
-                    if (Settings.canDrawOverlays(this@MainActivity)) {
-                        latestActiveId?.let {
-                            requestNotificationPermissionIfNeeded()
-                            startOverlay(it)
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    // 用户在系统设置里撤销了「显示在其他应用上层」：窗口已被系统移除，
+                    // 但前台服务还活着、OverlayState 仍是"运行中"、通知栏还写着"正在运行"。
+                    // 回到前台时校准一次，顺手清掉自动恢复意图（下次冷启动不该把宠物
+                    // 拉回来——没有权限，拉起来也只能立刻失败）。
+                    if (latestRunning && !Settings.canDrawOverlays(this@MainActivity)) {
+                        stopOverlay()
+                    }
+                    if (latestPendingStart) {
+                        // 无论授权与否都清掉待启动标记：
+                        //  - 已授权 → 立即续上开启流程
+                        //  - 未授权 → 用户放弃了这次操作，不清掉的话之后任何一次授权
+                        //    （哪怕与本次操作无关）都会让宠物"凭空出现"
+                        pendingStart = false
+                        if (Settings.canDrawOverlays(this@MainActivity)) {
+                            latestActiveId?.let {
+                                requestNotificationPermissionIfNeeded()
+                                startOverlay(it)
+                            }
                         }
                     }
                 }
@@ -278,7 +288,7 @@ class MainActivity : ComponentActivity() {
                     // 导入
                     Text("📦 导入 Codex 宠物", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
-                    Text("应用内置了 8 只示例宠物。你也可以导入更多：\n1. 点击底部的圆钮，展开控制面板\n2. 选择「导入」\n3. 选择「导入 Codex Pet 素材包」并选取下载的 .zip 文件")
+                    Text("应用内置了原创示例宠物「橘团」。你也可以导入更多：\n1. 点击底部的圆钮，展开控制面板\n2. 选择「导入」\n3. 选择「导入 Codex Pet 素材包」并选取下载的 .zip 文件")
 
                     Spacer(Modifier.height(8.dp))
                     Text("从哪里下载 Codex 宠物？", fontWeight = FontWeight.Bold)

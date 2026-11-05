@@ -45,12 +45,19 @@ class PetRepository(private val petStore: IPetStore) {
         withId
     }
 
-    /** 直接添加宠物（保持原始 ID，不生成新 UUID）—— 用于恢复备份 */
+    /**
+     * 直接添加宠物（保持原始 ID，不生成新 UUID）—— 用于恢复备份 / 首次加载示例宠物。
+     *
+     * 幂等：id 已存在时直接跳过。调用方是"恢复备份"与"首次启动加载 assets"两条
+     * 可能重复进入的路径（示例加载在旋转屏幕时会被重建的 LaunchedEffect 再跑一次
+     * 而首次标记还没落盘）。一旦列表里出现重复 id，LazyVerticalGrid 的
+     * items(key = { it.id }) 会直接抛 "Key was already used" 崩溃。
+     */
     suspend fun addPetDirect(petInfo: PetInfo) {
         writeMutex.withLock {
-            val currentList = petStore.petListFlow.first().toMutableList()
-            currentList.add(petInfo)
-            petStore.updatePetList(currentList)
+            val currentList = petStore.petListFlow.first()
+            if (currentList.any { it.id == petInfo.id }) return@withLock
+            petStore.updatePetList(currentList + petInfo)
         }
     }
 

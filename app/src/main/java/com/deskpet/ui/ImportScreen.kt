@@ -153,7 +153,7 @@ fun ImportScreen(
                 subtitle = "任何 .gif 文件，即导即用",
                 filled = false,
                 enabled = !isImporting
-            ) { gifLauncher.launch(arrayOf("image/gif")) }
+            ) { gifLauncher.launch(arrayOf("image/gif", "application/octet-stream")) }
             Spacer(Modifier.height(12.dp))
 
             ImportOption(
@@ -162,7 +162,9 @@ fun ImportScreen(
                 subtitle = "从 DeskPet_backup.zip 一键还原全部宠物",
                 filled = false,
                 enabled = !isImporting
-            ) { backupLauncher.launch(arrayOf("application/zip")) }
+            // octet-stream：不少机型/网盘把 zip 报成未知二进制类型，只给
+            // application/zip 会让备份包在选择器里灰掉选不中
+            ) { backupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
 
             if (isImporting) {
                 Spacer(Modifier.height(20.dp))

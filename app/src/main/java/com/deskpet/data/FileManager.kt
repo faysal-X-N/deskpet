@@ -211,6 +211,9 @@ class FileManager(private val context: Context) {
                 ZipExtractor.copyWithLimit(input, tmpFile, MAX_GIF_BYTES)
             } ?: throw ImportException.FileNotFound("无法打开文件")
             if (!ZipExtractor.isGifFile(tmpFile)) throw ImportException.InvalidFormat("所选文件不是 GIF 格式")
+            // 魔数只能证明"开头 6 个字节像 GIF"：截断文件、只有头部的样本都能过。
+            // 不在这里拦住，用户会得到一只进了列表却永远点不开的宠物（悬浮窗才报"加载失败"）
+            if (!isDecodableGif(tmpFile)) throw ImportException.InvalidFormat("GIF 文件已损坏或无法解码")
             if (!tmpFile.renameTo(destFile)) { tmpFile.delete(); throw ImportException.ExtractionFailed(RuntimeException("无法移动文件")) }
             // sourceId = 文件名 + 字节数：两个内容不同但同名的 GIF 不会被误判为重复
             PetInfo(id = id, type = PetType.GIF, displayName = fileName, spritesheetPath = destFile.absolutePath,
@@ -229,8 +232,11 @@ class FileManager(private val context: Context) {
     // ===== Export Single =====
 
     suspend fun exportPetToZip(petInfo: PetInfo): File? {
+        // 同名宠物（两只都叫 cat.gif）会用同一个缓存文件名互相覆盖：先导出的那份
+        // 还在分享面板里等着被读取，后一次导出就把它写坏了。带上 id 前缀避免撞名。
         val safeName = petInfo.displayName.replace(Regex("[/\\\\:*?\"<>|]"), "_")
-        val zipFile = File(context.cacheDir, "${safeName}_export.zip")
+            .ifBlank { "pet" }.take(40)
+        val zipFile = File(context.cacheDir, "${safeName}_${petInfo.id.take(8)}_export.zip")
         return try {
             FileOutputStream(zipFile).use { fos ->
                 BufferedOutputStream(fos).use { bos ->
@@ -339,6 +345,17 @@ class FileManager(private val context: Context) {
                 }
             } finally { tmpDir.deleteRecursively() }
         } ?: throw ImportException.FileNotFound("无法打开文件")
+    }
+
+    /** 用系统唯一的 GIF 解码器（Movie）试解一次：拿不到帧或宽高非法即判定不可用 */
+    @Suppress("DEPRECATION")
+    private fun isDecodableGif(file: File): Boolean = try {
+        val movie = file.inputStream().use { android.graphics.Movie.decodeStream(it) }
+        movie != null && movie.width() > 0 && movie.height() > 0
+    } catch (t: Throwable) {
+        // Throwable：畸形 GIF 在原生解码层可能抛 Error 而不是 Exception
+        Log.w(TAG, "GIF decode probe failed: ${t.message}")
+        false
     }
 
     fun shareZip(zipFile: File) {

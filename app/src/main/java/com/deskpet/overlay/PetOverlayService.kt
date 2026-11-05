@@ -402,6 +402,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         }
     }
 
+    @android.annotation.SuppressLint("RtlHardcoded")
     private fun add(): Boolean {
         if (!::wm.isInitialized) return false
         if (!Settings.canDrawOverlays(this)) {

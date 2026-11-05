@@ -1,0 +1,11 @@
+Feature & compliance release:
+- Bundled samples reduced to the original mascot "Jutuan"; no third-party
+  character assets ship inside the APK anymore (copyright & store review)
+- Fixed: crash risk when the pet list contained duplicate entries
+- Fixed: out-of-memory risk decoding thumbnails for very large sheets
+- Fixed: corrupted GIFs could be imported and only failed when shown
+- Fixed: UI and notification still said "running" after the overlay
+  permission was revoked
+- Accessibility: screen-reader labels on the zoom +/- buttons
+- Notification large icon regenerated per density (no more upscaling blur)
+- CI now compiles the instrumented tests so they cannot rot silently

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -22,10 +23,13 @@
             android:name=".MainActivity"
             android:exported="true"
             android:enableOnBackInvokedCallback="true"
+            tools:ignore="UnusedAttribute"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <!-- enableOnBackInvokedCallback：targetSdk 35 时代接入预测性返回。
                  全工程无 onBackPressed 重写，Compose BackHandler/对话框
-                 均走 OnBackPressedDispatcher，开启无行为回归 -->
+                 均走 OnBackPressedDispatcher，开启无行为回归。
+                 UnusedAttribute：属性本身 API 33+ 才生效，低版本系统按规范
+                 直接忽略（lint 只是提示"minSdk 用不到"，不是缺陷） -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

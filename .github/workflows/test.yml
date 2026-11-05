@@ -44,6 +44,12 @@ jobs:
       - name: Run unit tests
         run: chmod +x gradlew && ./gradlew testDebugUnitTest
 
+      # 仪器测试只在真机/模拟器上跑，但**必须**在 CI 里编译：
+      # androidTest 源码不在任何其它任务的编译路径上，一旦 PetListScreen 这类
+      # 签名变化（例如新增 isLoading 参数），坏掉几个月都不会有人知道。
+      - name: Compile instrumented tests
+        run: ./gradlew assembleDebugAndroidTest
+
       - name: Run Android lint
         run: ./gradlew lintDebug
 

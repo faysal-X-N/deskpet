@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -51,6 +50,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -673,7 +674,10 @@ private fun StepButton(symbol: String, desc: String, onClick: () -> Unit) {
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(onClickLabel = desc, onClick = onClick)
+            // 按钮里只有一个「−」「＋」符号，TalkBack 会把它读成"减号"甚至读不出来；
+            // desc 参数此前是死参数（声明了但没人用），这里接上语义层
+            .semantics { contentDescription = desc }
     ) {
         Text(
             symbol,
@@ -820,6 +824,11 @@ private fun loadOrCreateThumb(pet: PetInfo): Bitmap? {
  * 只解码精灵表的第一格（约 192x208 = 0.15MB）。
  * 旧实现用 BitmapFactory.decodeFile 解整张表（1536x1872 = 11MB/张），
  * 列表首屏多张卡片并发解码会直接 OOM。
+ *
+ * 降采样与渲染端同口径（[SpritesheetParser.MAX_FRAME_DIM]）：导入的素材可以是
+ * 任意尺寸，一张 4000x4500 的"平坦色"图压缩后只有几百 KB，能过 zip 限制，但单格
+ * 就有 500x500 起步、四万像素级的表能到 5000x5000 —— 列表页照样直接吃满内存。
+ * 列表缩略图只需要撑满一张卡片，按 2 的幂降到 1024 以内，画质无差别。
  */
 @Suppress("DEPRECATION")
 private fun decodeFirstFrame(path: String): Bitmap? {
@@ -828,8 +837,12 @@ private fun decodeFirstFrame(path: String): Bitmap? {
     val cw = bounds.outWidth / 8
     val ch = bounds.outHeight / 9
     if (cw <= 0 || ch <= 0) return null
+    val sample = com.deskpet.engine.SpritesheetParser.frameSampleSize(cw, ch)
 
-    val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+    val opts = BitmapFactory.Options().apply {
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+        inSampleSize = sample
+    }
     // API 28+ 支持 WebP 区域解码；更老的版本退回整表解码
     if (android.os.Build.VERSION.SDK_INT >= 28) {
         var decoder: android.graphics.BitmapRegionDecoder? = null
@@ -843,9 +856,16 @@ private fun decodeFirstFrame(path: String): Bitmap? {
         }
     }
 
+    // 整表回退：full 已按 inSampleSize 降采样，切图必须用降采样后的单元格尺寸。
+    // 沿用源尺寸 cw/ch 会切到表外，createBitmap 越界抛 IllegalArgumentException。
     val full = BitmapFactory.decodeFile(path, opts) ?: return null
     return try {
-        Bitmap.createBitmap(full, 0, 0, cw, ch)
+        val fcw = full.width / 8
+        val fch = full.height / 9
+        if (fcw <= 0 || fch <= 0) null else Bitmap.createBitmap(full, 0, 0, fcw, fch)
+    } catch (e: Exception) {
+        Log.w("PetListScreen", "fallback crop failed", e)
+        null
     } finally {
         full.recycle()
     }
