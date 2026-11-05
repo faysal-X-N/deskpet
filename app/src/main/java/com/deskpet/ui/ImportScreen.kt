@@ -60,7 +60,8 @@ fun ImportScreen(
      *
      * 结构：importMutex.withLock 在外层（"等锁"可取消，导入排队时返回键仍有效，
      * 不会把用户锁在导入页），NonCancellable 只包数据管道（"跑管道"不可取消：
-     * 导入中旋转/切深色模式会重建 Activity，rememberCoroutineScope 随组合销毁
+     * 导入中切深色模式/语言等 uiMode 变更会重建 Activity（旋转已由 manifest
+     * configChanges 接管、不重建），rememberCoroutineScope 随组合销毁
      * 被取消——zip 可能已解压完但 addPet 没执行，磁盘上留下永远删不掉的孤儿目录。
      * 管道跑完再回可取消区做 UI 反馈，UI 上下文已取消时 snackbar 静默跳过，无副作用）。
      */

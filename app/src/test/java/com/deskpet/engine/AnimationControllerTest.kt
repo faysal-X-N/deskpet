@@ -2,7 +2,6 @@ package com.deskpet.engine
 
 import com.deskpet.data.model.PetAnimationState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest

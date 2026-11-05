@@ -59,6 +59,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Robolectric：让单元测试能拿到真实的 Android 资源与 Compose 渲染管线，
+    // 从而在没有设备/模拟器的情况下执行 UI 测试与文件层集成测试。
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -106,6 +114,12 @@ dependencies {
     // Test dependencies
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    // Robolectric：JVM 上跑 Android 框架与 Compose UI 测试（无需真机/模拟器）
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

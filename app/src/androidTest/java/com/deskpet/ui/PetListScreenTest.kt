@@ -56,8 +56,7 @@ class PetListScreenTest {
         id = "pet-1",
         type = PetType.CODEX_PET,
         displayName = "TestPet",
-        spritesheetPath = "/fake/test.png",
-        isActive = true
+        spritesheetPath = "/fake/test.png"
     )
 
     @Test

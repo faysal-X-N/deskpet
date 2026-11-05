@@ -1,7 +1,6 @@
 package com.deskpet.engine
 
 import com.deskpet.data.model.PetAnimationState
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

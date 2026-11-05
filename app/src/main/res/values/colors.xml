@@ -2,4 +2,7 @@
 <resources>
     <!-- 桌面图标底色：泛洪统一后的奶油色（与图标资源严格同值，无接缝） -->
     <color name="ic_launcher_background">#FDEDD4</color>
+    <!-- 冷启动 windowBackground 与 Compose 侧 background 保持同色，
+         消除启动画面 → 首帧之间颜色跳变（浅色 #FFF8F5） -->
+    <color name="launch_background">#FFF8F5</color>
 </resources>

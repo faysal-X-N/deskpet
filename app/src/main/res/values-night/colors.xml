@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色启动背景与 Compose DarkColors.background（#1A120D 深棕）一致：
+         此前夜间主题回退到 Material 默认深灰 #303030，冷启动会"深灰闪"一下
+         再跳到 Compose 的深棕。注意 Android 12+ 动态取色时 Compose 背景随壁纸
+         变化，此静态色无法逐机一致，但已把跳变从"深灰→深棕"缩到最小 -->
+    <color name="launch_background">#1A120D</color>
+</resources>

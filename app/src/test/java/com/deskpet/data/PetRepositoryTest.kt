@@ -57,14 +57,12 @@ class InMemoryPetStore : IPetStore {
 fun testPet(
     id: String = "",
     displayName: String = "TestPet",
-    sourceId: String = "",
-    isActive: Boolean = false
+    sourceId: String = ""
 ): PetInfo = PetInfo(
     id = id,
     type = PetType.CODEX_PET,
     displayName = displayName,
     spritesheetPath = "/fake/test.png",
-    isActive = isActive,
     sourceId = sourceId
 )
 
@@ -131,20 +129,17 @@ class PetRepositoryTest {
     }
 
     @Test
-    fun `setActivePet updates isActive flag`() = runTest {
+    fun `setActivePet sets activePetId`() = runTest {
         val pet1 = repo.addPet(testPet(displayName = "Pet1"))
         val pet2 = repo.addPet(testPet(displayName = "Pet2"))
 
         repo.setActivePet(pet1.id)
 
         val pets = store.petListFlow.first()
-        val activePet = pets.find { it.id == pet1.id }
-        val inactivePet = pets.find { it.id == pet2.id }
+        // 选中态只由 activePetId 承载（isActive 死字段已删），列表不应被重写
+        assertEquals(pet1.displayName, pets.find { it.id == pet1.id }?.displayName)
+        assertEquals(pet2.displayName, pets.find { it.id == pet2.id }?.displayName)
 
-        assertTrue(activePet?.isActive == true)
-        assertFalse(inactivePet?.isActive == true)
-
-        // verify activePetId was set
         val activeId = store.activePetIdFlow.first()
         assertEquals(pet1.id, activeId)
     }
@@ -157,9 +152,6 @@ class PetRepositoryTest {
 
         repo.setActivePet(pet2.id)
 
-        val pets = store.petListFlow.first()
-        assertFalse(pets.find { it.id == pet1.id }?.isActive == true)
-        assertTrue(pets.find { it.id == pet2.id }?.isActive == true)
         assertEquals(pet2.id, store.activePetIdFlow.first())
     }
 
