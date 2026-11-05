@@ -2,6 +2,7 @@ package com.deskpet.engine
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.graphics.createBitmap
 import java.io.FileInputStream
@@ -75,7 +76,8 @@ class GifRenderer {
         // 动态 GIF 按循环进度取帧；静态 GIF（duration=0）固定第 0 帧——
         // 旧实现在这里直接返回 null，宠物会一片空白永远不显示
         if (movieDuration > 0) {
-            m.setTime((System.currentTimeMillis() % movieDuration).toInt())
+            // 用单调时钟取模：墙钟跳变（NTP 校时/用户改时间）会让 GIF 瞬跳一帧
+            m.setTime((SystemClock.elapsedRealtime() % movieDuration).toInt())
         } else {
             m.setTime(0)
         }

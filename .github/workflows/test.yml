@@ -93,8 +93,11 @@ jobs:
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/deskpet-release.apk"
           else
-            echo "::warning::无正式签名 release APK，回退为 debug 签名 APK 发布"
-            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/deskpet-release.apk"
+            # 缺正式签名包（secrets 失效/key 轮换/仓库迁移）时直接失败，
+            # 绝不回退 debug 包：debug 签名的 APK 装了正式版的用户无法覆盖升级，
+            # 只能卸载重装丢数据，且这种事故是静默发生的
+            echo "::error::tag 构建缺少正式签名 release APK（secrets 可能失效），拒绝以 debug 包冒充发布"
+            exit 1
           fi
 
       - name: Create GitHub Release (on tag push)

@@ -56,13 +56,29 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     private var wx = 0f
     private var wy = 200f
     private var savedScale = 1f
-    private val sc = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // CoroutineExceptionHandler 是必须的：SupervisorJob 只隔离子协程间的失败，
+    // 不吞异常本身——漏网异常会走线程默认处理器直接崩掉前台服务进程。
+    // 加上后降级为记日志，宠物最多停一拍而不是整个 App"已停止"。
+    private val sc = CoroutineScope(
+        Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, e ->
+            Log.e(TAG, "Uncaught exception in overlay scope", e)
+        }
+    )
 
     /** 亮灭屏状态：省电广播到来时需要据此决定是否恢复自主行为（灭屏时不能开） */
     @Volatile private var screenOn = true
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: android.content.Context?, i: Intent?) {
+            // onReceive 不在协程作用域里，这里抛异常会直接崩进程，整体兜一层
+            try {
+                handleScreenBroadcast(i)
+            } catch (e: Exception) {
+                Log.e(TAG, "screen broadcast handling failed", e)
+            }
+        }
+
+        private fun handleScreenBroadcast(i: Intent?) {
             if (!::anim.isInitialized) return
             val pm = getSystemService(POWER_SERVICE) as android.os.PowerManager
             when (i?.action) {

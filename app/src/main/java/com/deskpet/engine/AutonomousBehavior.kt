@@ -8,12 +8,13 @@ class AutonomousBehavior(
     private val animationController: IAnimationStateController,
     private val coroutineScope: CoroutineScope,
     /**
-     * 时间源。默认系统墙钟；单元测试注入虚拟时钟（TestScheduler.currentTime）。
-     * 时间源被写死成 System.currentTimeMillis() 时，"空闲 30 秒"这条门槛在
-     * 虚拟时间测试里永远不成立（delay 走虚拟时钟、时间戳走真实时钟），
-     * 只能靠真实等待或干脆不测——这正是本类此前 4 个测试全是空转的原因。
+     * 时间源。默认 System.nanoTime()（单调时钟，纳秒换算毫秒）：墙钟
+     * System.currentTimeMillis() 会随 NTP 校时/用户改时间跳变——时间被回拨后
+     * lastTouchTime 落在"未来"，差值恒负，宠物会"养着养着就不动了"直到再点一下。
+     * 纯 Kotlin 单调源也让 JVM 单元测试无需依赖 Android stub。
+     * 单元测试注入虚拟时钟（TestScheduler.currentTime）。
      */
-    private val now: () -> Long = System::currentTimeMillis
+    private val now: () -> Long = { System.nanoTime() / 1_000_000L }
 ) {
     private val autoStates = listOf(
         PetAnimationState.RUNNING,
