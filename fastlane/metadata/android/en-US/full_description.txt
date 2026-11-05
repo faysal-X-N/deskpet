@@ -1,0 +1,18 @@
+DeskPet is a lightweight, fully open-source desktop pet that lives on your screen as a floating overlay.
+
+FEATURES
+• Floating companion — the pet stays on top of all your apps, in portrait and landscape
+• Touch interaction — tap to wave, drag to move, pinch to resize
+• 9 standard animations (idle / running / jumping / waving and more), compatible with the Codex Pet standard and 2500+ community pet packs
+• Autonomous behavior — when left alone, the pet walks around, jumps and looks around on its own
+• Independent memory — every pet remembers its own screen position and size
+• Survives task swiping — and if the system kills it, reopening the app brings the pet back automatically
+• Import & backup — import community pet packs or GIFs, export/restore all pets for device migration
+• Landscape-ready — a vertical side dock adapts to screen notches and gesture areas
+• Power-save aware — automatically lowers frame rate in system power-save mode
+
+PRIVACY
+No INTERNET permission at all. The app runs 100% locally and collects nothing.
+
+OPEN SOURCE
+GPL-3.0 licensed. Issues and pull requests are welcome.

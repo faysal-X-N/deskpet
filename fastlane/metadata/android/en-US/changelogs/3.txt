@@ -1,0 +1,7 @@
+Stability & experience release:
+- Survives task swiping; auto-resume when reopening the app after process death
+- Landscape side dock with notch/gesture-area avoidance
+- Automatic frame-rate reduction in power-save mode
+- New launcher and notification icons
+- APK size reduced to ~5MB
+- Fixed 10+ issues: RTL mirroring, pet-switch race, import orphans, and more
