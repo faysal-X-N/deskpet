@@ -374,6 +374,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         savedScale = info.scale
         // 灭屏期间被系统拉起时不启动动画，等 SCREEN_ON 广播再开（registerReceiverSafely 已同步 screenOn）
         if (screenOn) anim.start()
+        // 取消是协作式的：从最后一个挂起点返回到 add() 之间没有检查点，
+        // 极速连点时旧协程可能带着"已过期"的宠物把视图加进窗口，
+        // 造成 OverlayState 与屏幕实际显示不一致
+        currentCoroutineContext().ensureActive()
         if (!add()) {
             OverlayState.setRunning(null)
             // 不停服会留下"正在运行"的通知和常驻前台服务，但宠物根本没显示

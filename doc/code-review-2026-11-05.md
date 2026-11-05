@@ -14,8 +14,8 @@
 | `testDebugUnitTest --rerun` | **67 通过 / 0 失败 / 0 错误**（强制重跑，不吃缓存） |
 | `assembleDebugAndroidTest` | ✅ 通过（修复前 **FAILED**，见第二节） |
 | `lintDebug` | 0 errors / **8 warnings**（修复前 14；逐条见第八节） |
-| `assembleDebug` | ✅ **10.38 MB**（原 13.99 MB） |
-| `assembleRelease`（R8） | ✅ **1.57 MB**（原 5.31 MB） |
+| `assembleDebug` | ✅ **10.31 MB**（原 13.99 MB） |
+| `assembleRelease`（R8） | ✅ **1.66 MB**（原 5.31 MB） |
 
 体积下降来自移除内置第三方角色素材（约 3.6MB WebP）与冗余位图启动图标。
 

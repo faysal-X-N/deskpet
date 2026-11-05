@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式：冷启动 starting window 也用深色父主题，避免黑底 App 先白闪一下 -->
+    <style name="Theme.DeskPet" parent="android:Theme.Material.NoActionBar" />
+</resources>

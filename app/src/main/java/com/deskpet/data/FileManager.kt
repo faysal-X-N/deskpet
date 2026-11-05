@@ -309,9 +309,17 @@ class FileManager(private val context: Context) {
                                 throw ImportException.ExtractionFailed(RuntimeException("恢复宠物 ${pet.id} 的文件时失败（存储空间不足？）"))
                             }
                         }
+                        // 找不到精灵图就整条跳过：兜底用备份里的旧路径入库，
+                        // 会造出"列表里有、点了没反应"的死宠
+                        val sheetFile = findSpritesheet(destDir)
+                        if (sheetFile == null) {
+                            destDir.deleteRecursively()
+                            Log.w(TAG, "restore: pet ${pet.id} missing spritesheet, skipped")
+                            return@forEach
+                        }
                         val fixedPet = pet.copy(
                             petJsonPath = findPetJson(destDir)?.absolutePath,
-                            spritesheetPath = findSpritesheet(destDir)?.absolutePath ?: pet.spritesheetPath
+                            spritesheetPath = sheetFile.absolutePath
                         )
                         petRepository.addPetDirect(fixedPet)
                     }

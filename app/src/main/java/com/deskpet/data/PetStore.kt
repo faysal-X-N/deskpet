@@ -50,7 +50,10 @@ class PetStore(private val context: Context) : IPetStore {
     override val petListFlow: Flow<List<PetInfo>> = safeData(context.dataStore).map { prefs ->
         val jsonStr = prefs[PET_LIST_KEY] ?: "[]"
         try {
-            json.decodeFromString<List<PetInfo>>(jsonStr)
+            // distinctBy 防御历史脏数据：列表一旦出现重复 id，Compose 的
+            // items(key = it.id) 在首帧渲染就抛 IllegalArgumentException，
+            // 用户只能清应用数据自救。新增路径已有幂等，这里堵住存量路径
+            json.decodeFromString<List<PetInfo>>(jsonStr).distinctBy { it.id }
         } catch (e: Exception) {
             Log.e("PetStore", "Failed to parse pet list JSON, falling back to last good list", e)
             synchronized(lastGoodLock) { lastGoodList } ?: emptyList()

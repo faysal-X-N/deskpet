@@ -298,7 +298,12 @@ class MainActivity : ComponentActivity() {
                             append("codexpet.xyz")
                         }
                     }, modifier = Modifier.clickable {
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, "https://codexpet.xyz/".toUri()))
+                        // 无可用浏览器的设备（定制 ROM/受限工作资料）会抛 ActivityNotFoundException
+                        runCatching {
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, "https://codexpet.xyz/".toUri()))
+                        }.onFailure {
+                            Toast.makeText(ctx, "未找到可用的浏览器", Toast.LENGTH_SHORT).show()
+                        }
                     })
                     Text(buildAnnotatedString {
                         append("👉 ")
@@ -306,7 +311,11 @@ class MainActivity : ComponentActivity() {
                             append("github.com/Codexdei/petdex")
                         }
                     }, modifier = Modifier.clickable {
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/Codexdei/petdex".toUri()))
+                        runCatching {
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, "https://github.com/Codexdei/petdex".toUri()))
+                        }.onFailure {
+                            Toast.makeText(ctx, "未找到可用的浏览器", Toast.LENGTH_SHORT).show()
+                        }
                     })
 
                     Spacer(Modifier.height(12.dp))

@@ -51,7 +51,7 @@ class AnimationController(
     val petHeight: StateFlow<Int> = _h
 
     @Volatile private var fi = 0
-    private var pc = 0
+    @Volatile private var pc = 0
 
     /** 动画循环在 Main 线程读、reload 在 IO 线程写，必须 volatile 保证可见性 */
     @Volatile private var loader: PetEngine.PetLoader? = null

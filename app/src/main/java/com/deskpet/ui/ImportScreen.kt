@@ -20,6 +20,8 @@ import com.deskpet.data.model.PetInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** 导入结果：数据管道在 NonCancellable 区跑完，把结论带回可取消的 UI 区 */
@@ -28,6 +30,14 @@ private sealed class ImportResult {
     object Duplicate : ImportResult()
     data class Failure(val error: ImportException) : ImportResult()
 }
+
+/**
+ * 进程级导入互斥锁：uiMode/fontScale/locale 等配置变化会重建 Activity，
+ * remember 的 isImporting 随之归零而旧协程还在 NonCancellable 区跑——
+ * 用户此时再点导入同一个包，两次 existsBySourceId 都判定"不存在"就会进两份。
+ * 锁提升到文件顶层（类加载器级单例）才能跨 Activity 重建存活。
+ */
+private val importMutex = Mutex()
 
 @Composable
 fun ImportScreen(
@@ -58,22 +68,33 @@ fun ImportScreen(
             isImporting = true
             try {
                 val result = withContext(NonCancellable) {
-                    try {
-                        // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
-                        val imported = withContext(Dispatchers.IO) { importer(uri) }
-                        if (petRepository.existsBySourceId(imported.sourceId)) {
-                            // 文件已经解压到磁盘了，重复导入要把它们清掉，避免残留
-                            withContext(Dispatchers.IO) { fileManager.deletePet(imported) }
-                            ImportResult.Duplicate
-                        } else {
-                            val added = petRepository.addPet(imported)
-                            petRepository.setActivePet(added.id)
-                            ImportResult.Success(added)
+                    importMutex.withLock {
+                        var imported: PetInfo? = null
+                        try {
+                            // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
+                            imported = withContext(Dispatchers.IO) { importer(uri) }
+                            if (petRepository.existsBySourceId(imported.sourceId)) {
+                                // 文件已经解压到磁盘了，重复导入要把它们清掉，避免残留
+                                withContext(Dispatchers.IO) { fileManager.deletePet(imported) }
+                                ImportResult.Duplicate
+                            } else {
+                                val added = petRepository.addPet(imported)
+                                petRepository.setActivePet(added.id)
+                                ImportResult.Success(added)
+                            }
+                        } catch (e: ImportException) {
+                            // 失败路径也要清掉已解压的文件：磁盘满/DataStore 写失败时
+                            // 不清理会留下永远删不掉的孤儿目录（列表里看不见）
+                            imported?.let {
+                                runCatching { withContext(Dispatchers.IO) { fileManager.deletePet(it) } }
+                            }
+                            ImportResult.Failure(e)
+                        } catch (e: Exception) {
+                            imported?.let {
+                                runCatching { withContext(Dispatchers.IO) { fileManager.deletePet(it) } }
+                            }
+                            ImportResult.Failure(ImportException.ExtractionFailed(e))
                         }
-                    } catch (e: ImportException) {
-                        ImportResult.Failure(e)
-                    } catch (e: Exception) {
-                        ImportResult.Failure(ImportException.ExtractionFailed(e))
                     }
                 }
                 when (result) {
@@ -104,9 +125,12 @@ fun ImportScreen(
                     scope.launch {
                         isImporting = true
                         try {
-                            // 同 runImport：恢复的数据管道不可取消，防孤儿文件
+                            // 同 runImport：恢复的数据管道不可取消，防孤儿文件；
+                            // 且与导入共用一把互斥锁，防 Activity 重建后并发写列表
                             withContext(NonCancellable) {
-                                withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
+                                importMutex.withLock {
+                                    withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
+                                }
                             }
                             snackbarHostState.showSnackbar("恢复完成")
                             onImportSuccess()
