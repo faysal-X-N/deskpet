@@ -232,11 +232,14 @@ class FileManager(private val context: Context) {
     // ===== Export Single =====
 
     suspend fun exportPetToZip(petInfo: PetInfo): File? {
-        // 导出前清理历史导出包：cacheDir 系统只在存储吃紧时才回收，删宠物也不清这里，
-        // 久挂会按宠物数累积常驻（每份数 MB）。分享面板里的"当前那份"也是这些文件之一，
-        // 但既然用户又发起新导出，说明上一份已经用完了。
+        // 按时间清理历史导出包（1 小时前的才算过期）：cacheDir 系统只在存储吃紧时才
+        // 回收，删宠物也不清这里，久挂会按宠物数累积常驻（每份数 MB）。不能"存在就删"——
+        // 分享面板里的 URI 是异步被接收方（微信等）读取的，刚导出的 A 还没被读完，
+        // 用户紧接着导出 B 就把 A 删了，发送会拿到空文件/失败。固定 1 小时宽限足够
+        // 任何分享面板完成读取。
+        val exportCutoff = System.currentTimeMillis() - 60 * 60 * 1000L
         context.cacheDir.listFiles()?.forEach {
-            if (it.isFile && it.name.endsWith("_export.zip")) it.delete()
+            if (it.isFile && it.name.endsWith("_export.zip") && it.lastModified() < exportCutoff) it.delete()
         }
         // 同名宠物（两只都叫 cat.gif）会用同一个缓存文件名互相覆盖：先导出的那份
         // 还在分享面板里等着被读取，后一次导出就把它写坏了。带上 id 前缀避免撞名。

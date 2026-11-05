@@ -58,17 +58,18 @@ fun ImportScreen(
      * 注意：addPet() 会生成新的 UUID，之后必须用**返回的** pet 设置选中，
      * 否则 activePetId 指向一个不存在的 id，界面上点「开启」会什么都不发生。
      *
-     * 数据管道必须 NonCancellable：导入中旋转/切深色模式会重建 Activity，
-     * rememberCoroutineScope 随组合销毁被取消——zip 可能已解压完但 addPet
-     * 没执行，磁盘上留下永远删不掉的孤儿目录。管道整体不可取消，跑完再
-     * 回可取消区做 UI 反馈（UI 上下文已取消时 snackbar 静默跳过，无副作用）。
+     * 结构：importMutex.withLock 在外层（"等锁"可取消，导入排队时返回键仍有效，
+     * 不会把用户锁在导入页），NonCancellable 只包数据管道（"跑管道"不可取消：
+     * 导入中旋转/切深色模式会重建 Activity，rememberCoroutineScope 随组合销毁
+     * 被取消——zip 可能已解压完但 addPet 没执行，磁盘上留下永远删不掉的孤儿目录。
+     * 管道跑完再回可取消区做 UI 反馈，UI 上下文已取消时 snackbar 静默跳过，无副作用）。
      */
     fun runImport(uri: Uri, importer: suspend (Uri) -> PetInfo) {
         scope.launch {
             isImporting = true
             try {
-                val result = withContext(NonCancellable) {
-                    importMutex.withLock {
+                val result = importMutex.withLock {
+                    withContext(NonCancellable) {
                         var imported: PetInfo? = null
                         try {
                             // 解压 / 拷贝文件是磁盘 IO，必须离开主线程
@@ -126,9 +127,10 @@ fun ImportScreen(
                         isImporting = true
                         try {
                             // 同 runImport：恢复的数据管道不可取消，防孤儿文件；
-                            // 且与导入共用一把互斥锁，防 Activity 重建后并发写列表
-                            withContext(NonCancellable) {
-                                importMutex.withLock {
+                            // 且与导入共用一把互斥锁，防 Activity 重建后并发写列表。
+                            // 锁在 NonCancellable 外层：等锁阶段可取消，恢复排队时返回键有效
+                            importMutex.withLock {
+                                withContext(NonCancellable) {
                                     withContext(Dispatchers.IO) { fileManager.restoreFromBackup(it, petRepository) }
                                 }
                             }

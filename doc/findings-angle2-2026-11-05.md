@@ -39,17 +39,21 @@
 
 - `doc/tasks/progress.md`："assets 7 只"条目加注（v1.2.0 起仅保留橘团 1 只，
   老用户已导入的本地宠物不受影响）。
-- 报告称 `code-review-2026-11-05.md` APK 数字（10.38/1.57）与实际不符——
-  **取证不成立**：文档实写 10.31/1.66，全文无 10.38/1.57。
+- 报告称 `code-review-2026-11-05.md` APK 数字（10.38/1.57）与实际不符——~~取证不成立~~
+  **本条判错了，更正（2026-11-05 第六轮指出）**：git 历史证明原始记录确实是 10.38/1.57
+  （`git show 6a2487c:doc/code-review-2026-11-05.md` 可见），是我们在 `e13901a` 提交里
+  把数字改成了 10.31/1.66，随后写本档时只回看了改后状态，误判"原始记录不存在"。
+  教训：核对"记录错误"类指控必须查 git 历史，不能只看工作区。
 
 ## 二、报告澄清与勘误
 
 - **老用户持有 7 只已删素材**：属实且符合预期（不能删用户数据），已并入上表 5 的标注。
   对截图决策的影响：新装用户 v1.2.0 只有 1 只，商店截图仍须重拍（真机新装环境）。
-- **versionCode 4 签名冲突**：v1.1.0 的 Release APK 确为 debug 签名（14.6MB，发布当天已
-  用 v1.1.1 正式签名包替换附件）。若真有用户在替换前装过 v1.1.0 debug 包，升级 v1.1.1+
-  会签名冲突失败，需卸载重装（本地宠物数据可提前备份）。用户量极小、窗口极短，接受该
-  风险，不做数据迁移。
+- **versionCode 4 签名冲突**：~~v1.1.0 的 Release APK 确为 debug 签名（14.6MB，发布当天已
+  用 v1.1.1 正式签名包替换附件）~~ **本条也判错了，更正（2026-11-05 第六轮 apksigner 取证）**：
+  当天替换的是 **v1.1.1 自己的**附件，**v1.1.0 的 debug 签名包一直挂在 Releases 页面上没动**，
+  这是"现在还开着的口子"而非历史窗口。已处置：删除 v1.1.0 的 APK 资产（Release 页与 tag
+  保留），页面顶部加醒目撤包警告与备份-卸载-恢复指引。
 
 ## 三、进 backlog（有意不排期，产品级优化）
 
@@ -63,7 +67,32 @@
 | onTrimMemory | 后台被压内存时不主动释放 SpritesheetParser 缓存（≤8MB） |
 | TalkBack 长按标签 | combinedClickable 无 onLongClickLabel |
 
-## 四、验证
+## 五、第六轮补充（2026-11-05 复核反馈处置）
 
-- `testDebugUnitTest --rerun-tasks`：全部通过
-- `:app:lintVitalRelease` + `assembleRelease` + `assembleDebug`：全部通过
+### 已修的 2 个回归（第五轮修复自身引入）
+
+1. **导出清理误删"正在分享"的包**：原实现"存在就删"假设上一份已用完，不成立——
+   分享面板接收方（微信等）是异步读 URI 的，紧接着导出宠物 B 会删掉还没被读完的
+   A 的 zip。改为按时间清理：仅删 1 小时前的 `*_export.zip`。
+2. **导入锁的"等待"被包进 NonCancellable**：第二个导入不可取消地排队，且
+   isImporting=true 时返回键无效，用户被锁在导入页。改为 `importMutex.withLock`
+   在外层（等锁可取消）、NonCancellable 只包数据管道（跑管道仍防孤儿文件）；
+   备份恢复处同样处理。
+
+### v1.1.0 发布事故处置（见第二节更正）
+
+- 已用 apksigner 复核：v1.1.0 包确为 `CN=Android Debug`，v1.1.1 包
+  `CN=DeskPet` 且与本地 keystore 指纹一致（签名链通，v1.1.1 用户可正常升级）。
+- 处置：删除 v1.1.0 的 APK 资产 + Release 说明顶部加撤包警告（含备份指引），
+  Release 页与 tag 保留。
+
+### keystore 风险确认
+
+- keystore/明文密码/Base64 在 `.workbuddy/`（gitignored），`git clean -xdf`
+  会将其删除。**已有仓库外备份：E:\128_我的文件（MD5 校验一致）**。
+  约定：任何涉及清理未跟踪文件的操作前，必须先确认该备份仍存在。
+
+## 六、验证
+
+- 第五轮：`testDebugUnitTest --rerun-tasks` + `:app:lintVitalRelease` + 双包构建全部通过
+- 第六轮（回归修复后）：`testDebugUnitTest --rerun-tasks` + `:app:lintVitalRelease` + 双包构建全部通过
