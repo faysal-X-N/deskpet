@@ -68,11 +68,7 @@ class PetListScreenRobolectricTest {
     @Test
     fun rendersTitleText() {
         setPetListContent()
-        // 用 assertExists 而非 assertIsDisplayed：Robolectric NATIVE 图形模式下
-        // 该 headline Text 布局尺寸为 0（实测 bounds=0,0,0,0，同屏 bodySmall 中文
-        // 文本正常），是 Robolectric 对中文大字号字体的测量 quirk，非产品缺陷——
-        // 真机显示正常。"存在性"在此 JVM 环境可验，"显示性"归真机验收。
-        composeTestRule.onNodeWithText("宠物栏").assertExists()
+        composeTestRule.onNodeWithText("宠物栏").assertIsDisplayed()
     }
 
     @Test

@@ -119,7 +119,8 @@ dependencies {
     testImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
-    testImplementation("androidx.compose.ui:ui-test-manifest")
+    // lint 要求 TestActivity 声明走 debug variant manifest（unitTest 合并 debug 资源，够用）
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

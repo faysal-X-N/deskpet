@@ -30,13 +30,6 @@ class PetRepository(private val petStore: IPetStore) {
 
     fun getActivePetId(): Flow<String?> = petStore.activePetIdFlow
 
-    fun getActivePet(): Flow<PetInfo?> = combine(
-        petStore.petListFlow,
-        petStore.activePetIdFlow
-    ) { pets, activeId ->
-        pets.find { it.id == activeId }
-    }
-
     suspend fun addPet(petInfo: PetInfo): PetInfo = writeMutex.withLock {
         val withId = petInfo.copy(id = UUID.randomUUID().toString())
         val currentList = petStore.petListFlow.first().toMutableList()
@@ -133,7 +126,6 @@ class PetRepository(private val petStore: IPetStore) {
                 .onFailure { android.util.Log.w("PetRepository", "AutoResume flag write failed", it) }
         }
     }
-    suspend fun existsByPath(path: String): Boolean = petStore.petListFlow.first().any { it.spritesheetPath == path }
     suspend fun existsBySourceId(sourceId: String): Boolean = sourceId.isNotEmpty() && petStore.petListFlow.first().any { it.sourceId == sourceId }
     fun isFirstLaunch(): Flow<Boolean> = petStore.isFirstLaunch
     fun samplesLoaded(): Flow<Boolean> = petStore.samplesLoaded

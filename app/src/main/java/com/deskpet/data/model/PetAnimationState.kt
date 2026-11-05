@@ -30,8 +30,5 @@ enum class PetAnimationState(val row: Int, val specName: String) {
                 }
             )
         }
-
-        fun fromSpecName(name: String): PetAnimationState? =
-            entries.find { it.specName.equals(name, ignoreCase = true) }
     }
 }

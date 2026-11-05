@@ -19,6 +19,22 @@ class ZipExtractor(
 ) {
 
     fun extract(inputStream: InputStream, destDir: File) {
+        // 异常契约：本类只向调用方抛 ImportException。ZipInputStream 对非法 UTF-8
+        // 条目名会抛裸 IllegalArgumentException("malformed input off ...")，若不
+        // 转译，importCodexPet 兜得住但 restoreFromBackup 会把它当原始消息直接
+        // 展示给用户（"恢复失败：malformed input off : 1, length : 1"）
+        try {
+            extractInternal(inputStream, destDir)
+        } catch (e: ImportException) {
+            throw e
+        } catch (e: IllegalArgumentException) {
+            throw ImportException.InvalidFormat("压缩包条目名损坏，不是有效的 zip 文件")
+        } catch (e: java.io.IOException) {
+            throw ImportException.InvalidFormat("压缩包读取失败：${e.message}")
+        }
+    }
+
+    private fun extractInternal(inputStream: InputStream, destDir: File) {
         val base = destDir.canonicalPath
         var entries = 0
         var total = 0L
@@ -65,9 +81,14 @@ class ZipExtractor(
         /**
          * pet.id 来自备份 pets.json（外部输入）。
          * 含路径分隔符或 ".." 时可把文件写穿到应用私有目录任意位置（如 shared_prefs）。
+         * 另设两条硬防线（暴力模糊测试实证逃逸面）：超长 id（>64 字符）在部分平台
+         * 触发系统级 "参数错误" IOException；控制字符（ISO control，含 NUL/\u0001）
+         * 会绕过前两条检查，在 Windows/部分 ROM 上触发 "文件名…语法不正确"。
          */
         fun isSafePetId(id: String): Boolean =
-            id.isNotBlank() && !id.contains('/') && !id.contains('\\') && !id.contains("..")
+            id.isNotBlank() && id.length <= 64
+                && !id.contains('/') && !id.contains('\\') && !id.contains("..")
+                && id.none { it.isISOControl() }
 
         /** GIF 魔数校验（GIF87a / GIF89a），拒绝伪装成 GIF 的其它文件 */
         fun isGifFile(file: File): Boolean {

@@ -125,7 +125,10 @@ fun PetListScreen(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp)) {
             // 顶栏（M3 规范："app bar 最多 1-2 个操作，能不用溢出菜单就不用，
             // 操作多就放进 toolbar"）：本页所有操作都在底部收纳坞，顶栏零图标
-            Column(Modifier.weight(1f, fill = false)) {
+            // 注意头部不能用 weight：weight 子项在无权重子项之后测量，而下方
+            // 空态 Box(fillMaxSize) 会先吃掉全部高度，头部被压成 0（标题曾因此
+            // 在所有设备上不可见）。剩余空间改由内容区用 weight(1f) 主动认领。
+            Column {
                 Text("宠物栏", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 if (!isLoading && petList.isNotEmpty()) {
                     Text(
@@ -140,7 +143,7 @@ fun PetListScreen(
         if (isLoading) {
             // 磁盘数据尚未读出：保持空白，避免"还没有宠物"空状态在启动瞬间闪现
         } else if (petList.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -187,7 +190,7 @@ fun PetListScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize().navigationBarsPadding()
+                modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding()
             ) {
                 items(petList, key = { it.id }, contentType = { it.type }) { pet ->
                     PetGridCard(
@@ -516,6 +519,9 @@ private fun PetDock(
                                             else MaterialTheme.colorScheme.outlineVariant,
                                             CircleShape
                                         )
+                                        // 横屏状态行没有文字（竖屏有「运行中/未开启」），
+                                        // 圆点必须自带语义，否则 TalkBack 用户不知道运行状态
+                                        .semantics { contentDescription = if (isRunning) "运行中" else "未开启" }
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(

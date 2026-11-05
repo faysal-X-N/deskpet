@@ -72,9 +72,16 @@ class FileManager(private val context: Context) {
                     petJsonFile.parentFile?.let { parent ->
                         val newRef = parent.toPath()
                             .relativize(spritesheetFile.toPath()).toString().replace('\\', '/')
+                        val newJson = json.encodeToString(CodexPetConfig.serializer(), config.copy(spritesheetPath = newRef))
                         val tmp = File(parent, petJsonFile.name + ".sync.tmp")
-                        tmp.writeText(json.encodeToString(CodexPetConfig.serializer(), config.copy(spritesheetPath = newRef)))
-                        if (!tmp.renameTo(petJsonFile)) tmp.delete()
+                        tmp.writeText(newJson)
+                        // renameTo 的覆盖语义依平台：Windows 上目标已存在时失败，
+                        // Linux/Android 成功。失败必须回退为直接覆写，否则转码后
+                        // 的 pet.json 仍引用已被删除的 spritesheet.png，导出包对外断链
+                        if (!tmp.renameTo(petJsonFile)) {
+                            petJsonFile.writeText(newJson)
+                            tmp.delete()
+                        }
                     }
                 } catch (t: Throwable) {
                     // 同步失败不影响导入：本 App 用 PetInfo.spritesheetPath，不读这个字段
@@ -299,37 +306,48 @@ class FileManager(private val context: Context) {
                     val petsDir = File(context.filesDir, "pets").also { it.mkdirs() }
                     val petsBase = petsDir.canonicalPath
                     petList.forEach { pet ->
-                        // 去重：已存在的 ID 跳过
-                        if (petRepository.getPet(pet.id) != null) return@forEach
-                        // 安全校验：id 来自备份 JSON（外部输入），含路径分隔符或 ".." 时可写穿
-                        // 到应用私有目录任意位置（如 shared_prefs），必须拒绝
-                        if (!ZipExtractor.isSafePetId(pet.id)) return@forEach
-                        val destDir = File(petsDir, pet.id)
-                        if (!destDir.canonicalPath.startsWith(petsBase + File.separator)) return@forEach
-                        destDir.mkdirs()
-                        val srcDir = File(tmpDir, "pets/${pet.id}")
-                        if (srcDir.exists()) {
-                            // copyRecursively 支持嵌套子目录；copyTo 遇到目录会抛 FileNotFoundException。
-                            // 它返回 Boolean 且默认策略是静默跳过失败项——磁盘满时会"恢复成功"但文件缺失，
-                            // 所以必须检查返回值
-                            if (!srcDir.copyRecursively(destDir, true)) {
-                                destDir.deleteRecursively()
-                                throw ImportException.ExtractionFailed(RuntimeException("恢复宠物 ${pet.id} 的文件时失败（存储空间不足？）"))
+                        // per-item 容错：备份里一条坏数据（恶意 id / 损坏文件）只跳过
+                        // 这一条，不能中止整批——否则"9 个恶意 id + 1 个合法 id"
+                        // 会连合法的那只也恢复不出来
+                        var destDir: File? = null
+                        try {
+                            // 去重：已存在的 ID 跳过
+                            if (petRepository.getPet(pet.id) != null) return@forEach
+                            // 安全校验：id 来自备份 JSON（外部输入），含路径分隔符或 ".." 时可写穿
+                            // 到应用私有目录任意位置（如 shared_prefs），必须拒绝
+                            if (!ZipExtractor.isSafePetId(pet.id)) return@forEach
+                            destDir = File(petsDir, pet.id)
+                            if (!destDir.canonicalPath.startsWith(petsBase + File.separator)) return@forEach
+                            destDir.mkdirs()
+                            val srcDir = File(tmpDir, "pets/${pet.id}")
+                            if (srcDir.exists()) {
+                                // copyRecursively 支持嵌套子目录；copyTo 遇到目录会抛 FileNotFoundException。
+                                // 它返回 Boolean 且默认策略是静默跳过失败项——磁盘满时会"恢复成功"但文件缺失，
+                                // 所以必须检查返回值
+                                if (!srcDir.copyRecursively(destDir, true)) {
+                                    destDir.deleteRecursively()
+                                    Log.w(TAG, "restore: pet ${pet.id} copy failed, skipped (storage full?)")
+                                    return@forEach
+                                }
                             }
+                            // 找不到精灵图就整条跳过：兜底用备份里的旧路径入库，
+                            // 会造出"列表里有、点了没反应"的死宠
+                            val sheetFile = findSpritesheet(destDir)
+                            if (sheetFile == null) {
+                                destDir.deleteRecursively()
+                                Log.w(TAG, "restore: pet ${pet.id} missing spritesheet, skipped")
+                                return@forEach
+                            }
+                            val fixedPet = pet.copy(
+                                petJsonPath = findPetJson(destDir)?.absolutePath,
+                                spritesheetPath = sheetFile.absolutePath
+                            )
+                            petRepository.addPetDirect(fixedPet)
+                        } catch (e: Exception) {
+                            // 只清本条已落盘的目录；坏 id 不安全，绝不能拼进 File() 删除
+                            destDir?.deleteRecursively()
+                            Log.w(TAG, "restore: pet ${pet.id} failed, skipped", e)
                         }
-                        // 找不到精灵图就整条跳过：兜底用备份里的旧路径入库，
-                        // 会造出"列表里有、点了没反应"的死宠
-                        val sheetFile = findSpritesheet(destDir)
-                        if (sheetFile == null) {
-                            destDir.deleteRecursively()
-                            Log.w(TAG, "restore: pet ${pet.id} missing spritesheet, skipped")
-                            return@forEach
-                        }
-                        val fixedPet = pet.copy(
-                            petJsonPath = findPetJson(destDir)?.absolutePath,
-                            spritesheetPath = sheetFile.absolutePath
-                        )
-                        petRepository.addPetDirect(fixedPet)
                     }
                 } else {
                     val petJsonFile = findPetJson(tmpDir)
