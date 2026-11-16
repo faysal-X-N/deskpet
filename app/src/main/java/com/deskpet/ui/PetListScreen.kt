@@ -840,8 +840,11 @@ private fun loadOrCreateThumb(pet: PetInfo): Bitmap? {
 private fun decodeFirstFrame(path: String): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(path, bounds)
-    val cw = bounds.outWidth / 8
-    val ch = bounds.outHeight / 9
+    // 行数必须跟渲染端同口径（9=v1 / 11=v2，由高度推）。写死 9 行时 v2 表
+    // （1536×2288）会按 254px 切，缩略图会带进下一行的内容。
+    val rows = com.deskpet.engine.CodexPetSpec.rowsForHeight(bounds.outHeight)
+    val cw = bounds.outWidth / com.deskpet.engine.CodexPetSpec.COLS
+    val ch = bounds.outHeight / rows
     if (cw <= 0 || ch <= 0) return null
     val sample = com.deskpet.engine.SpritesheetParser.frameSampleSize(cw, ch)
 
@@ -866,8 +869,10 @@ private fun decodeFirstFrame(path: String): Bitmap? {
     // 沿用源尺寸 cw/ch 会切到表外，createBitmap 越界抛 IllegalArgumentException。
     val full = BitmapFactory.decodeFile(path, opts) ?: return null
     return try {
-        val fcw = full.width / 8
-        val fch = full.height / 9
+        val fcw = full.width / com.deskpet.engine.CodexPetSpec.COLS
+        // 复用上面按原始高度推出的 rows：full 可能已被 inSampleSize 降采样，
+        // 但"这张表有几行"不会随降采样变（整数除法的取整误差不超过 1px）
+        val fch = full.height / rows
         if (fcw <= 0 || fch <= 0) null else Bitmap.createBitmap(full, 0, 0, fcw, fch)
     } catch (e: Exception) {
         Log.w("PetListScreen", "fallback crop failed", e)

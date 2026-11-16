@@ -21,8 +21,7 @@ class AnimationController(
     data class Frame(val bitmap: Bitmap, val seq: Long)
 
     companion object {
-        private const val IDLE_FRAME_INTERVAL_NS = 500_000_000L
-        private const val ANIM_FRAME_INTERVAL_NS = 200_000_000L
+        /** 每帧时长的下限（防抖）；真实时长来自 [PetFrameTiming] 的规范表 */
         private const val MIN_FRAME_DELAY_NS = 16_000_000L
         private const val LOOP_COUNT_BEFORE_IDLE = 2
         private const val MIN_PET_SIZE_PX = 32
@@ -41,13 +40,13 @@ class AnimationController(
 
     /**
      * 系统省电模式联动（由 Service 的广播接收器维护）：
-     * 用户主动开启省电 = 明确在乎电量，此时帧率自动减半（播放 5→2.5FPS、
-     * 待机 2→1FPS），桌宠变成"用电良民"；平时体验完全不变。
+     * 用户主动开启省电 = 明确在乎电量，此时每帧时长整体 ×2
+     * （规范节奏 12.5FPS → 6FPS 左右），桌宠变成"用电良民"；平时按规范走。
      */
     @Volatile var powerSaveMode = false
-    private val _w = MutableStateFlow(PetEngine.DEFAULT_PET_WIDTH)
+    private val _w = MutableStateFlow(CodexPetSpec.CELL_W)
     val petWidth: StateFlow<Int> = _w
-    private val _h = MutableStateFlow(PetEngine.DEFAULT_PET_HEIGHT)
+    private val _h = MutableStateFlow(CodexPetSpec.CELL_H)
     val petHeight: StateFlow<Int> = _h
 
     @Volatile private var fi = 0
@@ -57,8 +56,8 @@ class AnimationController(
     @Volatile private var loader: PetEngine.PetLoader? = null
     private var fj: Job? = null
     private var s = 1f
-    private var baseW = PetEngine.DEFAULT_PET_WIDTH
-    private var baseH = PetEngine.DEFAULT_PET_HEIGHT
+    private var baseW = CodexPetSpec.CELL_W
+    private var baseH = CodexPetSpec.CELL_H
 
     /** 加载宠物；会按当前缩放比例重新计算窗口尺寸。文件读取发生在线程池中，调用方需自行切 IO。 */
     fun load(p: PetInfo): Boolean {
@@ -94,8 +93,12 @@ class AnimationController(
             var lt = System.nanoTime()
             while (isActive) {
                 val l = loader ?: break
+                // 这一帧是用哪个状态、哪个序号画出来的：时长必须按"已显示的那帧"算，
+                // 不能用自增后的 fi（否则整条动画会差一帧，循环点还会跳到别的时长）
+                val shownState = _state.value
+                val shownIdx = fi
                 val bitmap = withContext(Dispatchers.IO) {
-                    petEngine.getCurrentFrame(l, _state.value, fi)
+                    petEngine.getCurrentFrame(l, shownState, shownIdx)
                 }
                 if (bitmap != null) {
                     _frame.value = Frame(bitmap, ++frameSeq)
@@ -118,10 +121,15 @@ class AnimationController(
                         }
                     }
                 }
-                // Codex Pet 待机时降到 2FPS 省电；GIF 没有状态机，始终按动画帧率播放。
-                // 系统省电模式下整体再减半（播放 2.5FPS / 待机 1FPS）
-                val idle = _state.value == PetAnimationState.IDLE && isCodexPet()
-                var ns = if (idle) IDLE_FRAME_INTERVAL_NS else ANIM_FRAME_INTERVAL_NS
+                // 时长按 Codex 规范的逐帧表走（待机一轮 1100ms、跑动 1060ms），
+                // 不再统一 500/200ms —— 旧实现比规范慢 2.7 倍，观感就是幻灯片。
+                // GIF 没有逐帧表，沿用 200ms；用户开省电时整体 ×2。
+                val baseMs = if (isCodexPet()) {
+                    PetFrameTiming.frameMs(shownState, shownIdx)
+                } else {
+                    PetFrameTiming.FALLBACK_FRAME_MS
+                }
+                var ns = baseMs * 1_000_000L
                 if (powerSaveMode) ns *= 2
                 delay(((ns - (System.nanoTime() - lt)).coerceAtLeast(MIN_FRAME_DELAY_NS)) / 1_000_000)
                 lt = System.nanoTime()

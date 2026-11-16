@@ -3,7 +3,7 @@ DeskPet is a lightweight, fully open-source desktop pet that lives on your scree
 FEATURES
 • Floating companion — the pet stays on top of all your apps, in portrait and landscape
 • Touch interaction — tap to wave, drag to move, pinch to resize
-• 9 standard animations (idle / running / jumping / waving and more), compatible with the Codex Pet standard and 2500+ community pet packs
+• 9 standard animations (idle / running / jumping / waving and more), compatible with the Codex Pet standard and the community gallery at codexpet.top (384 pets)
 • Autonomous behavior — when left alone, the pet walks around, jumps and looks around on its own
 • Independent memory — every pet remembers its own screen position and size
 • Survives task swiping — and if the system kills it, reopening the app brings the pet back automatically

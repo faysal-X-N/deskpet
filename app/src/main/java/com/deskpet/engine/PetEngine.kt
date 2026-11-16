@@ -10,13 +10,6 @@ class PetEngine(
     private val spritesheetParser: SpritesheetParser,
     private val gifRenderer: GifRenderer
 ) {
-    companion object {
-        const val SPRITESHEET_COLS = 8
-        const val SPRITESHEET_ROWS = 9
-        const val DEFAULT_PET_WIDTH = 192
-        const val DEFAULT_PET_HEIGHT = 208
-    }
-
 
     sealed class PetLoader {
         data class CodexPet(
@@ -76,21 +69,22 @@ class PetEngine(
     fun getPetSize(loader: PetLoader): Pair<Int, Int> {
         return when (loader) {
             is PetLoader.CodexPet -> {
-                // spritesheet 8x9 grid, cell = spritesheetW/8 x spritesheetH/9
+                // 图集固定 8 列，行数由高度决定（v1=9 / v2=11），
+                // 单元格尺寸统一走 SpritesheetParser.renderCellSize
                 // But we need to read actual dimensions
                 val spritesheet = java.io.File(loader.spritesheetPath)
-                if (!spritesheet.exists()) return Pair(DEFAULT_PET_WIDTH, DEFAULT_PET_HEIGHT)
+                if (!spritesheet.exists()) return Pair(CodexPetSpec.CELL_W, CodexPetSpec.CELL_H)
                 val options = android.graphics.BitmapFactory.Options().apply {
                     inJustDecodeBounds = true
                 }
                 android.graphics.BitmapFactory.decodeFile(loader.spritesheetPath, options)
                 if (options.outWidth <= 0 || options.outHeight <= 0) {
-                    return Pair(DEFAULT_PET_WIDTH, DEFAULT_PET_HEIGHT)
+                    return Pair(CodexPetSpec.CELL_W, CodexPetSpec.CELL_H)
                 }
                 // 与 extractFrame 的渲染尺寸保持一致（超大单帧会被降采样，
                 // 窗口若按原始单元格算会比宠物画面大一圈）
                 val (w, h) = SpritesheetParser.renderCellSize(options.outWidth, options.outHeight)
-                if (w <= 0 || h <= 0) Pair(DEFAULT_PET_WIDTH, DEFAULT_PET_HEIGHT) else Pair(w, h)
+                if (w <= 0 || h <= 0) Pair(CodexPetSpec.CELL_W, CodexPetSpec.CELL_H) else Pair(w, h)
             }
             is PetLoader.Gif -> Pair(gifRenderer.width, gifRenderer.height)
         }

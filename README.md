@@ -13,8 +13,8 @@
 
 ## 📥 下载
 
-- **[最新 APK](https://github.com/faysal-X-N/deskpet/releases)** — GitHub Releases 页面
-- **[Actions → 最新运行 → Artifacts](https://github.com/faysal-X-N/deskpet/actions)** — 每次提交自动打包
+- **[最新 APK](https://github.com/faysal-X-N/deskpet/releases)** — GitHub Releases 页面（推荐；已签名的 `deskpet-release.apk`，可直接安装）
+- **[Actions → 最新运行 → Artifacts](https://github.com/faysal-X-N/deskpet/actions)** — 每次提交自动打包。请下载 **`app-debug`**（可直接安装）；`app-release` 在普通提交里是**未签名**产物（签名只在打 tag 时注入），仅供检查构建，装不上
 
 ---
 
@@ -24,7 +24,7 @@
 
 #### 1.1 获取安装包
 
-从 [Releases 页面](../../releases) 下载最新版本的 APK 安装包（文件名为 `app-debug.apk` 或类似名称）。
+从 [Releases 页面](../../releases) 下载最新版本的 APK 安装包（文件名形如 `deskpet-release.apk`）。
 
 #### 1.2 安装步骤
 
@@ -131,17 +131,20 @@
 
 Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 - `pet.json` — 宠物配置文件（名称、动画帧定义等）
-- `spritesheet.webp` 或 `spritesheet.png` — 精灵表图片（8列×9行动画帧）
+- `spritesheet.webp` 或 `spritesheet.png` — 精灵表图片（固定 8 列，单格 192×208；v1 为 9 行、v2 为 11 行）
+
+> **两个版本都支持**：v1 图集 1536×1872（9 行）、v2 图集 1536×2288（11 行）。
+> 应用按图片实际高度自动识别行数，不需要手动选版本。
 
 **导入步骤**：
 
-1. 从 [Codex Pet 社区](https://github.com/Codexdei/petdex) 或其他来源下载 `.zip` 格式素材包
+1. 从 [Codex Pet 社区目录](https://codexpet.top)（源仓库 [legeling/awesome-codex-pet](https://github.com/legeling/awesome-codex-pet)）或其他来源下载 `.zip` 格式素材包
 2. 打开「桌面宠物」应用
 3. 点击「**导入**」→「**🎨 导入 Codex Pet 素材包**」
 4. 在文件选择器中找到并选择下载的 zip 文件
 5. 导入成功后，宠物出现在宠物栏中，可以正常使用
 
-> **Codex Pet 支持的 9 种动画状态**：
+> **Codex Pet 支持的 9 种标准动画状态**（v2 图集多出的两行「看向」暂未启用，不影响前 9 行）：
 >
 > | 状态 | 说明 | 触发时机 |
 > |------|------|----------|
@@ -167,7 +170,7 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 
 > **GIF 宠物说明**：
 > - GIF 宠物仅循环播放动图内容，不会像 Codex Pet 那样区分不同动画状态
-> - GIF 以约 5FPS 播放（与 Codex Pet 动画帧率一致），并非原始 GIF 的全部帧率
+> - GIF 以约 5FPS 播放，并非原始 GIF 的全部帧率（Codex Pet 按素材规范的逐帧节奏播放，密集动作约 9–12FPS）
 > - 点击 GIF 宠物会做一个弹跳效果，不会切换动画
 > - 拖拽 GIF 宠物只会移动位置，不会切换动画
 > - 如果 GIF 动图过大（超过 10MB），导入时会提示文件过大并拒绝导入
@@ -251,7 +254,7 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 
 - 🪟 **悬浮窗显示** — 宠物浮在所有 App 之上，支持所有屏幕方向
 - 👆 **触摸交互** — 点击招手、长按拖拽移动、双指缩放大小（缩放双向同步到滑块）
-- 🎬 **9 种标准动画** — 兼容 Codex Pet 标准，idle / running / jumping / waving 等
+- 🎬 **9 种标准动画** — 兼容 Codex Pet 标准（v1 9 行 / v2 11 行，按图集高度自动识别），idle / running / jumping / waving 等
 - 🤖 **自主行为** — 约 30 秒无操作后宠物会自己散步、蹦跳、东张西望
 - 🔁 **划掉存活 + 自动恢复** — 原生 Android 划掉后台宠物仍在；进程被系统清理后重新打开应用自动唤回
 - 🧭 **横屏适配** — 横屏时收纳坞贴右缘竖排，自动避开挖孔与手势区
@@ -259,7 +262,7 @@ Codex Pet 是一种开源桌面宠物标准，一个素材包包含：
 - ⚡ **性能优化** — IO 线程解码 + GPU 硬件加速 + idle 低功耗 + 精灵图压缩（release 安装包约 1.6MB）
 - 🔔 **前台服务** — 通知栏常驻防杀，配自有剪影图标（Android 13+ 需授予通知权限）
 - 🪄 **自动权限** — 点开启 → 无权限 → 跳设置 → 开权限返回 → 自动开启，不用再点
-- 📦 **Codex Pet 兼容** — 支持社区 2500+ 宠物素材包导入
+- 📦 **Codex Pet 兼容** — 支持导入社区素材包（[codexpet.top](https://codexpet.top) 收录数百只，2026-11 时为 384 只；v1 9 行 / v2 11 行都能直接用）
 - 🖼️ **GIF 支持** — 直接导入 GIF 动图即可作为宠物
 - 💾 **备份恢复** — 一键导出/恢复全部宠物数据，方便换机迁移
 - 🎯 **独立记忆** — 每只宠物独立记忆屏幕位置和缩放大小
@@ -332,7 +335,9 @@ app/src/main/java/com/deskpet/
 │   └── GestureHandler.kt        # 手势处理（点击/长按拖拽/双指缩放）
 ├── engine/
 │   ├── PetEngine.kt             # 引擎入口（策略模式：Codex Pet / GIF 分发）
+│   ├── CodexPetSpec.kt          # 图集规格唯一真源（8 列 / 192×208 / 9~11 行）
 │   ├── SpritesheetParser.kt     # 精灵表解析（BitmapRegionDecoder + GPU 显存）
+│   ├── PetFrameTiming.kt        # Codex 规范的逐帧时长表
 │   ├── GifRenderer.kt           # GIF 帧解码
 │   ├── AnimationController.kt   # 动画状态机 + IO 线程帧解码 + 帧率保护
 │   ├── IAnimationStateController.kt  # 动画控制接口（便于测试）

@@ -6,16 +6,16 @@
 ## 任务列表
 
 - [ ] **T04-01 实现 pet.json 解析**
-  - **描述**：读取 pet.json 文件 → `kotlinx.serialization` 反序列化为 `CodexPetConfig`；若 `states` 为 null → 使用默认 9 行映射（硬编码 `DEFAULT_STATE_MAP`）
+  - **描述**：读取 pet.json 文件 → `kotlinx.serialization` 反序列化为 `CodexPetConfig`；若 `states` 为 null → 使用默认 9 状态映射（`DEFAULT_STATE_MAP`，行号 0–8；图集行数由图高决定：v1=9 / v2=11）
   - **输入**：T01-03（CodexPetConfig）、T00-02（kotlinx-serialization 依赖）
   - **输出**：`SpritesheetParser.parse()` 方法
   - **验收**：传入有效 pet.json → 返回非 null 的 CodexPetConfig；传入格式错误的 pet.json → 捕获 JsonDecodingException
 
 - [ ] **T04-02 实现 Cell 坐标计算**
-  - **描述**：按详细设计 §1.3.2，实现 `calculateCellRect(row, col, spritesheetW, spritesheetH)` → `Rect`；spritesheetW/8=cellW，spritesheetH/9=cellH
+  - **描述**：按详细设计 §1.3.2，实现 `calculateCellRect(row, col, spritesheetW, spritesheetH, rows)` → `Rect`；列数固定 8（`CodexPetSpec.COLS`），行数由图集高度推（1872→9 / 2288→11），单格恒 192×208
   - **输入**：T02-02（ImageDecoder.getImageDimensions）
   - **输出**：`SpritesheetParser.calculateCellRect()` 方法
-  - **验收**：传入 1536×1872 → row=0, col=0 → Rect(0,0,192,208)；row=8, col=7 → Rect(1344,1664,1536,1872)
+  - **验收**：传入 1536×1872 → row=0, col=0 → Rect(0,0,192,208)；row=8, col=7 → Rect(1344,1664,1536,1872)。传入 1536×2288（v2）→ row=1, col=0 → Rect(0,208,192,416)；row=10, col=7 → Rect(1344,2080,1536,2288)
 
 - [ ] **T04-03 实现帧提取 extractFrame()**
   - **描述**：按详细设计 §1.3.2，`extractFrame(config, state, frameIndex)` → 用 `BitmapRegionDecoder.decodeRegion(cellRect)` 提取该帧 Bitmap

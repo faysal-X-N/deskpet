@@ -435,7 +435,7 @@ class SpritesheetParser(
     fun parse(petJsonPath: String, spritesheetPath: String): CodexPetConfig
     // 1. 读取 pet.json 文件内容
     // 2. kotlinx.serialization.json.Json.decodeFromString<CodexPetConfig>
-    // 3. 若 states 为 null → 使用默认 9 行标准映射
+    // 3. 若 states 为 null → 使用默认 9 状态映射（行号 0–8；图集行数由图高决定：v1=9 / v2=11）
     // 4. 校验 spritesheet 文件存在
     
     // --- 帧提取 ---
@@ -461,7 +461,7 @@ class SpritesheetParser(
 }
 ```
 
-**关键算法 — 默认 9 行映射（无 states 时）**：
+**关键算法 — 默认 9 状态映射（无 states 时；图集行数由图高决定，v1=9 / v2=11）**：
 
 ```
 private val DEFAULT_STATE_MAP = mapOf(
@@ -480,9 +480,18 @@ private val DEFAULT_STATE_MAP = mapOf(
 **关键算法 — Cell 坐标计算**：
 
 ```
-fun calculateCellRect(row: Int, col: Int, spritesheetWidth: Int, spritesheetHeight: Int): Rect {
-    val cellWidth = spritesheetWidth / 8   // 8 列
-    val cellHeight = spritesheetHeight / 9 // 9 行
+// 规格唯一真源：com.deskpet.engine.CodexPetSpec（8 列 / 192×208 / 9~11 行）
+// 行数由图集实际高度推：1872 → 9（v1）、2288 → 11（v2）；
+// 高度不是 208 的整数倍时回落 9 行（畸形/被裁过的素材）
+fun calculateCellRect(
+    row: Int,
+    col: Int,
+    spritesheetWidth: Int,
+    spritesheetHeight: Int,
+    rows: Int = CodexPetSpec.rowsForHeight(spritesheetHeight)
+): Rect {
+    val cellWidth = spritesheetWidth / CodexPetSpec.COLS
+    val cellHeight = spritesheetHeight / rows
     return Rect(
         col * cellWidth,
         row * cellHeight,

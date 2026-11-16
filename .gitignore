@@ -11,3 +11,8 @@ local.properties
 /secrets/
 /.sisyphus/
 /.workbuddy/
+# APK 逆向分析 / 临时产物（约 1GB，勿提交）
+/_apk/
+/_mod/
+/_out/
+/_tools/

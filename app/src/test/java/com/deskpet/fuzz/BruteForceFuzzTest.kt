@@ -245,13 +245,19 @@ class BruteForceFuzzTest {
     @Test
     fun bruteForceGeometry() {
         val parser = SpritesheetParser()
-        val dims = intArrayOf(0, 1, 7, 8, 9, 100, 1023, 1024, 1025, 4096, 16384, 40000)
+        // 真实素材尺寸必须进表：1536×1872（v1，9 行）、1536×2288（v2，11 行）。
+        // 之前 dims 里没有任何真实尺寸，v2 的行几何从没被 fuzz 覆盖到。
+        val dims = intArrayOf(0, 1, 7, 8, 9, 100, 1023, 1024, 1025, 1536, 1872, 2288, 4096, 16384, 40000)
+        val spec = com.deskpet.engine.CodexPetSpec
         for (w in dims) for (h in dims) {
             val (rw, rh) = SpritesheetParser.renderCellSize(w, h)
-            if (w >= SpritesheetParser.SPRITESHEET_COLS && h >= SpritesheetParser.SPRITESHEET_ROWS && (rw < 1 || rh < 1)) v("geom", "renderCellSize($w,$h)=($rw,$rh) 非法")
-            for (row in 0 until SpritesheetParser.SPRITESHEET_ROWS) {
-                for (col in 0 until SpritesheetParser.SPRITESHEET_COLS) {
-                    val r = parser.calculateCellRect(row, col, w, h)
+            if (w >= spec.COLS && h >= spec.DEFAULT_ROWS && (rw < 1 || rh < 1)) v("geom", "renderCellSize($w,$h)=($rw,$rh) 非法")
+            // 行数按该高度实际能切的来（1872→9 / 2288→11）。用固定 9 行遍历会
+            // 对 v1 表去切第 10 行——那是测试自己造出来的越界，不是实现的 bug。
+            val rows = spec.rowsForHeight(h)
+            for (row in 0 until rows) {
+                for (col in 0 until spec.COLS) {
+                    val r = parser.calculateCellRect(row, col, w, h, rows)
                     if (r.left < 0 || r.top < 0 || r.right > w || r.bottom > h || r.width() < 0 || r.height() < 0) {
                         v("geom", "calculateCellRect($row,$col,$w,$h)=$r 越界")
                     }
@@ -269,7 +275,7 @@ class BruteForceFuzzTest {
         )
         com.deskpet.data.model.PetAnimationState.entries.forEach { st ->
             val fc = parser.getFrameCount(evil, st)
-            if (fc < 0 || fc > SpritesheetParser.SPRITESHEET_COLS) v("geom", "getFrameCount=$fc 越界 ($st)")
+            if (fc < 0 || fc > com.deskpet.engine.CodexPetSpec.COLS) v("geom", "getFrameCount=$fc 越界 ($st)")
         }
         m("BRUTE geometry done")
     }

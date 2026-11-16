@@ -99,7 +99,7 @@ graph TB
 | 模块 | 核心职责 | 技术 |
 |------|----------|------|
 | **PetEngine** | 引擎入口，根据宠物类型（Codex Pet / GIF）分发到对应渲染器 | 策略模式 |
-| **SpritesheetParser** | 解析 pet.json + spritesheet.webp，提取 9 行动画帧 | BitmapRegionDecoder |
+| **SpritesheetParser** | 解析 pet.json + spritesheet.webp，按图集高度提取动画帧（v1 9 行 / v2 11 行） | BitmapRegionDecoder |
 | **GifRenderer** | 解码 GIF 帧序列，按帧间隔循环输出 | Coil coil-gif |
 | **AnimationController** | 管理当前动画状态、帧索引、帧率（60FPS tick），输出当前应绘制的帧 | `withFrameMillis` |
 | **AutonomousBehavior** | 随机间隔触发自主行为（running/jumping/waiting/review），将状态切换指令发给 AnimationController（**仅 Codex Pet 宠物**，GIF 宠物无此模块） | 协程 `delay(random)` |
@@ -400,7 +400,7 @@ enum class PetAnimationState(val row: Int, val specName: String) {
 | **悬浮窗权限被系统自动回收**（MIUI/ColorOS 等国产 ROM 杀后台） | 高 | 宠物消失，体验差 | ① 引导用户添加白名单 ② 提供一键重新开启入口 ③ Service `onTaskRemoved` 优雅清理 |
 | **60FPS 渲染掉帧**（低端机 Canvas 性能不足） | 中 | 动画卡顿 | ① 动态降帧到 30FPS ② 缓存预解码的 Bitmap ③ 使用 `remember` 避免重组 |
 | **GIF 解码内存溢出**（大尺寸 GIF） | 中 | App 崩溃 | ① 导入时限制 GIF 最大尺寸（如 ≤ 10MB）② Coil 内置内存缓存 ③ 采样解码 |
-| **pet.json 格式不兼容**（社区宠物格式差异） | 中 | 导入失败 | ① 宽松解析，缺省字段用默认值 ② 无 `states` 数组时按标准 9 行硬编码映射 ③ 错误提示明确 |
+| **pet.json 格式不兼容**（社区宠物格式差异） | 中 | 导入失败 | ① 宽松解析，缺省字段用默认值 ② 无 `states` 数组时按标准 9 状态映射，行数由图集高度决定（v1=9 / v2=11） ③ 错误提示明确 |
 | **Android 版本碎片化**（API 26-34 行为差异） | 低 | 部分设备异常 | ① 最低 API 26 覆盖 90%+ 设备 ② 条件分支处理 API 差异 ③ 模拟器多版本测试 |
 | **GIF 宠物无法响应拖拽方向动画**（用户预期 VS 实际） | 低 | 体验降级 | ① 导入时明确标注 GIF 限制 ② 拖拽时至少移动位置 ③ 未来版本考虑 GIF 帧映射 |
 | **DataStore 数据损坏** | 低 | 宠物列表丢失 | ① 提供「重置」功能 ② 关键数据多副本 ③ 异常捕获降级为空列表 |

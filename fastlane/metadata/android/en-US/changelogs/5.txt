@@ -1,0 +1,9 @@
+Codex Pet v2 support and animation timing fix:
+- Support Codex Pet v2 sheets (11 rows, two extra "look" rows); the nine
+  standard animations keep working as before
+- Row count is now derived from the sheet height (v1 = 9, v2 = 11) instead
+  of being hard-coded to 9
+- Fixed: v2 sheets played misaligned, leaking the next row into the frame
+- Fixed: thumbnails for v2 sheets were cropped with the wrong row height
+- Animation timing now follows the spec's per-frame durations
+  (idle 3s -> 1.1s per cycle, running 1.6s -> 1.06s)
