@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Before
@@ -57,6 +59,10 @@ class InMemoryPetStore : IPetStore {
     override suspend fun setGhostMode(v: Boolean) {
         _ghostMode.value = v
     }
+
+    override suspend fun toggleGhostMode() {
+        _ghostMode.value = !_ghostMode.value
+    }
 }
 
 // ── Helper ──
@@ -80,11 +86,25 @@ class PetRepositoryTest {
 
     private lateinit var repo: PetRepository
     private lateinit var store: InMemoryPetStore
+    private val testScope = TestScope()
 
     @Before
     fun setUp() {
         store = InMemoryPetStore()
-        repo = PetRepository(store)
+        repo = PetRepository(store, testScope)
+    }
+
+    @Test
+    fun `toggleGhostMode flips the flag atomically`() = runTest {
+        assertFalse(repo.ghostMode().first())
+
+        repo.toggleGhostModeAsync() // fire-and-forget，等 scope 空转确认落盘完成
+        testScope.advanceUntilIdle()
+        assertTrue(repo.ghostMode().first())
+
+        repo.toggleGhostModeAsync()
+        testScope.advanceUntilIdle()
+        assertFalse(repo.ghostMode().first())
     }
 
     @Test

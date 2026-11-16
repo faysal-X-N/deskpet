@@ -212,9 +212,8 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onStopOverlay = { stopOverlay() },
-                // 幽灵模式：只写 DataStore 标志，悬浮窗由服务的收集器实时应用；
-                // 读 ghostMode 走 Compose 状态委托，取到的总是本次点击时的最新值
-                onToggleGhost = { repo.setGhostModeAsync(!ghostMode) },
+                // 幽灵模式：只写 DataStore 标志（原子翻转），悬浮窗由服务的收集器实时应用
+                onToggleGhost = { repo.toggleGhostModeAsync() },
                 onImportClick = { showImport = true },
                 onDeletePet = { id ->
                     sc.launch {

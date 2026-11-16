@@ -71,6 +71,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
      *  缓存一份同步值供 add() 创建窗口时直接用（DataStore 读取是异步的）。 */
     @Volatile private var ghostMode = false
 
+    /** startForeground 是否成功过：失败止损路径（stopSelf）上绝不能再发通知，
+     *  否则用户会看到一条"正在运行"的前台通知而宠物根本没起来 */
+    @Volatile private var foregroundStarted = false
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: android.content.Context?, i: Intent?) {
             // onReceive 不在协程作用域里，这里抛异常会直接崩进程，整体兜一层
@@ -234,6 +238,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             } else {
                 startForeground(NOTIFY_ID, ntf)
             }
+            foregroundStarted = true
         } catch (e: Exception) {
             Log.w(TAG, "startForeground failed", e)
             Toast.makeText(this@PetOverlayService, "前台服务失败: ${e.message}", Toast.LENGTH_LONG).show()
@@ -304,15 +309,11 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             return START_NOT_STICKY
         }
         // 通知栏「穿透模式」按钮：只翻转标志，绝不能走下面的宠物重载路径
-        // （job?.cancel() 会把正在加载的协程砍掉，宠物闪一下）
+        // （job?.cancel() 会把正在加载的协程砍掉，宠物闪一下）。
+        // 用原子翻转而非"读-取反-写回"：快速连点两下时后者可能都读到旧值，
+        // 翻一次就丢一次——DataStore 的 edit 串行执行，连点 N 次必翻 N 次
         if (i?.action == ACTION_TOGGLE_GHOST) {
-            sc.launch {
-                try {
-                    repo.setGhostModeAsync(!repo.ghostMode().first())
-                } catch (e: Exception) {
-                    Log.w(TAG, "ghost toggle failed", e)
-                }
-            }
+            repo.toggleGhostModeAsync()
             return START_STICKY
         }
         job?.cancel()
@@ -507,27 +508,31 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     }
 
     /** 把当前幽灵状态应用到悬浮窗：窗口标志切穿透 + 透明度做状态提示。
-     *  只动这两样——宠物动画/自主行为照常，穿透是"手指层面"的事。 */
+     *  只动这两样——宠物动画/自主行为照常，穿透是"手指层面"的事。
+     *  视图不存在时（宠物加载失败/还没 add）窗口部分跳过，但通知照刷：
+     *  服务活着就该让通知文案反映最新状态，否则通知栏按钮永远显示旧状态。 */
     private fun applyGhost() {
-        val v = cv ?: return
-        v.alpha = if (ghostMode) GHOST_ALPHA else 1f
-        (v.layoutParams as? WindowManager.LayoutParams)?.let { p ->
-            p.flags = if (ghostMode)
-                p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            else
-                p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            try {
-                wm.updateViewLayout(v, p)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to update ghost flags", e)
+        val v = cv
+        if (v != null) {
+            v.alpha = if (ghostMode) GHOST_ALPHA else 1f
+            (v.layoutParams as? WindowManager.LayoutParams)?.let { p ->
+                p.flags = if (ghostMode)
+                    p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                else
+                    p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                try {
+                    wm.updateViewLayout(v, p)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to update ghost flags", e)
+                }
             }
         }
-        // 通知文字/按钮文案与状态同步（宠物显示中才刷；通知只在服务跑着时存在）
         refreshNotification()
     }
 
-    /** 幽灵状态变化后刷新前台通知（_nm.notify 对同 id 的前台通知只更新内容） */
+    /** 幽灵状态变化后刷新前台通知（nm.notify 对同 id 的前台通知只更新内容） */
     private fun refreshNotification() {
+        if (!foregroundStarted) return
         try {
             val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.notify(NOTIFY_ID, buildNotification())

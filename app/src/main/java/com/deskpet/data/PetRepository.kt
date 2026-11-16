@@ -12,19 +12,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
-class PetRepository(private val petStore: IPetStore) {
+class PetRepository(
+    private val petStore: IPetStore,
+    /** 可注入便于测试：fire-and-forget 写入走此 scope，测试用 TestScope 才能确定性地等待完成 */
+    private val persistenceScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+) {
 
     /**
      * DataStore 的单次 edit 是原子的，但这里都是「先读列表 → 改 → 再写」，
      * 并发时（例如示例宠物加载与用户导入同时发生）会丢更新，所以写入统一串行化。
      */
     private val writeMutex = Mutex()
-
-    /**
-     * 独立的持久化作用域：服务 onDestroy 时自己的 scope 已取消，
-     * 数据落盘要走这个 scope 异步完成，不能用 runBlocking 阻塞主线程。
-     */
-    private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun getAllPets(): Flow<List<PetInfo>> = petStore.petListFlow
 
@@ -134,6 +132,14 @@ class PetRepository(private val petStore: IPetStore) {
         persistenceScope.launch {
             runCatching { petStore.setGhostMode(v) }
                 .onFailure { android.util.Log.w("PetRepository", "Ghost mode write failed", it) }
+        }
+    }
+
+    /** 异步原子翻转幽灵模式：通知栏按钮快速连点也保证每次点击都生效 */
+    fun toggleGhostModeAsync() {
+        persistenceScope.launch {
+            runCatching { petStore.toggleGhostMode() }
+                .onFailure { android.util.Log.w("PetRepository", "Ghost mode toggle failed", it) }
         }
     }
     suspend fun existsBySourceId(sourceId: String): Boolean = sourceId.isNotEmpty() && petStore.petListFlow.first().any { it.sourceId == sourceId }

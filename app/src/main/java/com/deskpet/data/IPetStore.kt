@@ -18,4 +18,7 @@ interface IPetStore {
     suspend fun setSamplesLoaded()
     suspend fun setOverlayAutoResume(v: Boolean)
     suspend fun setGhostMode(v: Boolean)
+    /** 原子翻转幽灵模式：DataStore 的 edit 串行执行，快速连点 N 次必翻 N 次
+     *  （读-改-写拆开的话，连点会读到同一个旧值，只翻一次） */
+    suspend fun toggleGhostMode()
 }

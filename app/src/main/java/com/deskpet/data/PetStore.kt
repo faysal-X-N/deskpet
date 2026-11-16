@@ -114,4 +114,8 @@ class PetStore(private val context: Context) : IPetStore {
     override suspend fun setGhostMode(v: Boolean) {
         context.dataStore.edit { it[GHOST_MODE_KEY] = v }
     }
+
+    override suspend fun toggleGhostMode() {
+        context.dataStore.edit { it[GHOST_MODE_KEY] = !(it[GHOST_MODE_KEY] ?: false) }
+    }
 }
