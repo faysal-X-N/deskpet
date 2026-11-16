@@ -29,6 +29,7 @@ class PetListScreenTest {
         petList: List<PetInfo> = emptyList(),
         activePetId: String? = null,
         isOverlayRunning: Boolean = false,
+        isGhost: Boolean = false,
         curScale: Float = 1.0f
     ) {
         composeTestRule.setContent {
@@ -38,10 +39,12 @@ class PetListScreenTest {
                     isLoading = false,
                     activePetId = activePetId,
                     isOverlayRunning = isOverlayRunning,
+                    isGhost = isGhost,
                     curScale = curScale,
                     onPetSelected = {},
                     onStartOverlay = {},
                     onStopOverlay = {},
+                    onToggleGhost = {},
                     onImportClick = {},
                     onDeletePet = {},
                     onScaleChange = {},
@@ -91,5 +94,20 @@ class PetListScreenTest {
         setPetListContent(petList = listOf(samplePet()), activePetId = "pet-1", isOverlayRunning = true)
         composeTestRule.onNodeWithContentDescription("展开控制").performClick()
         composeTestRule.onNodeWithText("关闭宠物").assertIsDisplayed()
+    }
+
+    @Test
+    fun rendersGhostToggleWhenOverlayRunning() {
+        setPetListContent(petList = listOf(samplePet()), activePetId = "pet-1", isOverlayRunning = true)
+        composeTestRule.onNodeWithContentDescription("展开控制").performClick()
+        // 穿透开关只在宠物运行时出现（关掉的对象是悬浮窗本身）
+        composeTestRule.onNodeWithText("穿透模式").assertIsDisplayed()
+    }
+
+    @Test
+    fun ghostToggleLabelFlipsWithGhostState() {
+        setPetListContent(petList = listOf(samplePet()), activePetId = "pet-1", isOverlayRunning = true, isGhost = true)
+        composeTestRule.onNodeWithContentDescription("展开控制").performClick()
+        composeTestRule.onNodeWithText("取消穿透").assertIsDisplayed()
     }
 }
