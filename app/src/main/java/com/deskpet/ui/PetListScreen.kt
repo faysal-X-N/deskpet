@@ -83,10 +83,12 @@ fun PetListScreen(
     isLoading: Boolean,
     activePetId: String?,
     isOverlayRunning: Boolean,
+    isGhost: Boolean,
     curScale: Float,
     onPetSelected: (String) -> Unit,
     onStartOverlay: () -> Unit,
     onStopOverlay: () -> Unit,
+    onToggleGhost: () -> Unit,
     onImportClick: () -> Unit,
     onDeletePet: (String) -> Unit,
     onScaleChange: (Float) -> Unit,
@@ -217,10 +219,12 @@ fun PetListScreen(
         PetDock(
             vertical = isLandscape,
             isRunning = isOverlayRunning,
+            isGhost = isGhost,
             canStart = activePetId != null,
             curScale = curScale,
             onStartOverlay = onStartOverlay,
             onStopOverlay = onStopOverlay,
+            onToggleGhost = onToggleGhost,
             onScaleChange = onScaleChange,
             onImportClick = onImportClick,
             onShowHelp = onShowHelp,
@@ -261,10 +265,12 @@ fun PetListScreen(
 private fun PetDock(
     vertical: Boolean,
     isRunning: Boolean,
+    isGhost: Boolean,
     canStart: Boolean,
     curScale: Float,
     onStartOverlay: () -> Unit,
     onStopOverlay: () -> Unit,
+    onToggleGhost: () -> Unit,
     onScaleChange: (Float) -> Unit,
     onImportClick: () -> Unit = {},
     onShowHelp: () -> Unit = {},
@@ -481,7 +487,17 @@ private fun PetDock(
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 // 次要操作行（M3：低频操作放 toolbar，安静的文字按钮）
+                                // 穿透开关只在宠物运行时有意义（关掉的对象是悬浮窗本身）
                                 Row(Modifier.fillMaxWidth()) {
+                                    if (isRunning) {
+                                        DockAction(
+                                            GhostIcon,
+                                            if (isGhost) "取消穿透" else "穿透模式"
+                                        ) {
+                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            onToggleGhost()
+                                        }
+                                    }
                                     DockAction(Icons.Default.Add, "导入") { onImportClick() }
                                     DockAction(Icons.Default.Info, "帮助") { onShowHelp() }
                                     DockAction(Icons.Default.Share, "备份全部") { onBackupAll() }
@@ -584,6 +600,31 @@ private fun PetDock(
                                     modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(Icons.Default.PlayArrow, "开启宠物", modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            // 穿透开关（仅运行时显示）：横屏次要图标行只有 104dp 宽
+                            // （3 个 32dp 图标正好排满），挤不进第 4 个——单独放在
+                            // 开关按钮下方，激活态用 primaryContainer 高亮
+                            if (isRunning) {
+                                Spacer(Modifier.height(8.dp))
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                        onToggleGhost()
+                                    },
+                                    modifier = Modifier.size(48.dp),
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = if (isGhost) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        contentColor = if (isGhost) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                ) {
+                                    Icon(
+                                        GhostIcon,
+                                        if (isGhost) "关闭穿透模式" else "开启穿透模式",
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                             HorizontalDivider(

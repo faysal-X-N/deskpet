@@ -28,6 +28,7 @@ class PetStore(private val context: Context) : IPetStore {
         private val FIRST_LAUNCH_KEY = booleanPreferencesKey("is_first_launch")
         private val SAMPLES_LOADED_KEY = booleanPreferencesKey("samples_loaded")
         private val OVERLAY_AUTO_RESUME_KEY = booleanPreferencesKey("overlay_auto_resume")
+        private val GHOST_MODE_KEY = booleanPreferencesKey("overlay_ghost_mode")
     }
 
     /** 解析失败时回退到最后一次成功的列表，避免一次损坏让用户所有宠物"集体消失"。
@@ -103,5 +104,14 @@ class PetStore(private val context: Context) : IPetStore {
 
     override suspend fun setOverlayAutoResume(v: Boolean) {
         context.dataStore.edit { it[OVERLAY_AUTO_RESUME_KEY] = v }
+    }
+
+    /** 幽灵模式持久化：服务被杀自动恢复后保持用户上次选择的穿透状态 */
+    override val ghostModeFlow: Flow<Boolean> = safeData(context.dataStore).map {
+        it[GHOST_MODE_KEY] ?: false
+    }
+
+    override suspend fun setGhostMode(v: Boolean) {
+        context.dataStore.edit { it[GHOST_MODE_KEY] = v }
     }
 }

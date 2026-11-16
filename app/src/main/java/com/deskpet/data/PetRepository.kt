@@ -126,6 +126,16 @@ class PetRepository(private val petStore: IPetStore) {
                 .onFailure { android.util.Log.w("PetRepository", "AutoResume flag write failed", it) }
         }
     }
+
+    fun ghostMode(): Flow<Boolean> = petStore.ghostModeFlow
+
+    /** 异步切换幽灵模式：坞按钮/通知动作都在非协程上下文触发，必须 fire-and-forget */
+    fun setGhostModeAsync(v: Boolean) {
+        persistenceScope.launch {
+            runCatching { petStore.setGhostMode(v) }
+                .onFailure { android.util.Log.w("PetRepository", "Ghost mode write failed", it) }
+        }
+    }
     suspend fun existsBySourceId(sourceId: String): Boolean = sourceId.isNotEmpty() && petStore.petListFlow.first().any { it.sourceId == sourceId }
     fun isFirstLaunch(): Flow<Boolean> = petStore.isFirstLaunch
     fun samplesLoaded(): Flow<Boolean> = petStore.samplesLoaded

@@ -10,9 +10,12 @@ interface IPetStore {
     val samplesLoaded: Flow<Boolean>
     /** 用户是否希望宠物显示中（区别于"被系统杀掉"）：打开 App 时据此自动恢复 */
     val overlayAutoResumeFlow: Flow<Boolean>
+    /** 幽灵模式（触摸穿透）：宠物可见可动，但手指穿过它直达下层应用 */
+    val ghostModeFlow: Flow<Boolean>
     suspend fun updatePetList(list: List<PetInfo>)
     suspend fun setActivePetId(id: String)
     suspend fun setFirstLaunchDone()
     suspend fun setSamplesLoaded()
     suspend fun setOverlayAutoResume(v: Boolean)
+    suspend fun setGhostMode(v: Boolean)
 }

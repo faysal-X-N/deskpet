@@ -31,6 +31,9 @@ class InMemoryPetStore : IPetStore {
     private val _overlayAutoResume = MutableStateFlow(false)
     override val overlayAutoResumeFlow: Flow<Boolean> = _overlayAutoResume.asStateFlow()
 
+    private val _ghostMode = MutableStateFlow(false)
+    override val ghostModeFlow: Flow<Boolean> = _ghostMode.asStateFlow()
+
     override suspend fun updatePetList(list: List<PetInfo>) {
         _petList.value = list
     }
@@ -49,6 +52,10 @@ class InMemoryPetStore : IPetStore {
 
     override suspend fun setOverlayAutoResume(v: Boolean) {
         _overlayAutoResume.value = v
+    }
+
+    override suspend fun setGhostMode(v: Boolean) {
+        _ghostMode.value = v
     }
 }
 

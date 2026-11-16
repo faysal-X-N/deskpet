@@ -67,6 +67,10 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     /** 亮灭屏状态：省电广播到来时需要据此决定是否恢复自主行为（灭屏时不能开） */
     @Volatile private var screenOn = true
 
+    /** 幽灵模式（触摸穿透）：宠物可见可动，但手指穿过它直达下层应用。
+     *  缓存一份同步值供 add() 创建窗口时直接用（DataStore 读取是异步的）。 */
+    @Volatile private var ghostMode = false
+
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: android.content.Context?, i: Intent?) {
             // onReceive 不在协程作用域里，这里抛异常会直接崩进程，整体兜一层
@@ -184,6 +188,15 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         )
         registerReceiverSafely()
         startForeground()
+        // 幽灵模式单一真源是 DataStore：坞按钮/通知动作只写标志，这里收集并
+        // 应用到窗口（切标志 + 透明度）。放在 startForeground 之后，保证
+        // applyGhost 里的通知刷新不会抢在 startForeground 之前发通知
+        sc.launch {
+            repo.ghostMode().collect { v ->
+                ghostMode = v
+                applyGhost()
+            }
+        }
     }
 
     /**
@@ -215,42 +228,7 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             nm.createNotificationChannel(android.app.NotificationChannel(
                 CHANNEL_ID, "桌面宠物", android.app.NotificationManager.IMPORTANCE_LOW
             ).apply { description = "宠物悬浮窗运行中" })
-
-            val contentIntent = android.app.PendingIntent.getActivity(
-                this, 0,
-                Intent(this, com.deskpet.MainActivity::class.java).apply {
-                    // NEW_TASK 保证服务里能启动 Activity；CLEAR_TOP|SINGLE_TOP
-                    // 复用已存在的实例走 onNewIntent——否则应用开着时点通知，
-                    // 返回栈里会再叠一个重复的列表页
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    )
-                },
-                android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            val ntf = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("桌面宠物")
-                .setContentText("正在运行")
-                // 自有白色剪影小图标（状态栏/通知栏单色规范）；旧代码用的
-                // android.R.drawable.ic_menu_gallery 是系统图库图标占位
-                .setSmallIcon(R.drawable.ic_stat_pet)
-                // 通知栏展开时显示彩色橘团大图（状态栏小图标按规范只能是单色剪影）
-                .setLargeIcon(android.graphics.BitmapFactory.decodeResource(resources, R.drawable.ic_notif_large))
-                .setContentIntent(contentIntent)
-                .setOngoing(true)
-                // 通知栏直接关闭宠物，不用回到 App 点「关闭」
-                .addAction(
-                    android.R.drawable.ic_menu_close_clear_cancel,
-                    "关闭宠物",
-                    PendingIntent.getService(
-                        this, 1,
-                        Intent(this, PetOverlayService::class.java).setAction(ACTION_STOP),
-                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                    )
-                )
-                .build()
+            val ntf = buildNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(NOTIFY_ID, ntf, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
@@ -265,6 +243,56 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         }
     }
 
+    /** 构建前台通知（startForeground 与幽灵切换后的刷新共用，保证两个入口内容一致） */
+    private fun buildNotification(): android.app.Notification {
+        val contentIntent = android.app.PendingIntent.getActivity(
+            this, 0,
+            Intent(this, com.deskpet.MainActivity::class.java).apply {
+                // NEW_TASK 保证服务里能启动 Activity；CLEAR_TOP|SINGLE_TOP
+                // 复用已存在的实例走 onNewIntent——否则应用开着时点通知，
+                // 返回栈里会再叠一个重复的列表页
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            },
+            android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("桌面宠物")
+            // 幽灵态在通知里写破：宠物半透明且摸不到，用户从任何入口都能知道当前状态
+            .setContentText(if (ghostMode) "穿透中 · 手指穿过宠物直达应用" else "正在运行")
+            // 自有白色剪影小图标（状态栏/通知栏单色规范）；旧代码用的
+            // android.R.drawable.ic_menu_gallery 是系统图库图标占位
+            .setSmallIcon(R.drawable.ic_stat_pet)
+            // 通知栏展开时显示彩色橘团大图（状态栏小图标按规范只能是单色剪影）
+            .setLargeIcon(android.graphics.BitmapFactory.decodeResource(resources, R.drawable.ic_notif_large))
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            // 幽灵模式切换：与收纳坞按钮写同一个 DataStore 标志，窗口状态由收集器应用
+            .addAction(
+                android.R.drawable.ic_menu_view,
+                if (ghostMode) "关闭穿透" else "穿透模式",
+                PendingIntent.getService(
+                    this, 2,
+                    Intent(this, PetOverlayService::class.java).setAction(ACTION_TOGGLE_GHOST),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            // 通知栏直接关闭宠物，不用回到 App 点「关闭」
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "关闭宠物",
+                PendingIntent.getService(
+                    this, 1,
+                    Intent(this, PetOverlayService::class.java).setAction(ACTION_STOP),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            .build()
+    }
+
     override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {
         // LifecycleService 需要 super 来派发生命周期事件（否则 lifecycle 一直停在 CREATED）
         super.onStartCommand(i, f, s)
@@ -274,6 +302,18 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
             repo.setOverlayAutoResumeAsync(false)
             stopSelf()
             return START_NOT_STICKY
+        }
+        // 通知栏「穿透模式」按钮：只翻转标志，绝不能走下面的宠物重载路径
+        // （job?.cancel() 会把正在加载的协程砍掉，宠物闪一下）
+        if (i?.action == ACTION_TOGGLE_GHOST) {
+            sc.launch {
+                try {
+                    repo.setGhostModeAsync(!repo.ghostMode().first())
+                } catch (e: Exception) {
+                    Log.w(TAG, "ghost toggle failed", e)
+                }
+            }
+            return START_STICKY
         }
         job?.cancel()
         job = sc.launch {
@@ -455,12 +495,44 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
         }
         return try {
             wm.addView(cv, params)
+            // 幽灵状态在重建窗口后也要生效（切换宠物/服务恢复都会走 add）
+            applyGhost()
             true
         } catch (e: Exception) {
             Log.e(TAG, "addView", e)
             cv = null
             Toast.makeText(this, "悬浮窗添加失败: ${e.message}", Toast.LENGTH_LONG).show()
             false
+        }
+    }
+
+    /** 把当前幽灵状态应用到悬浮窗：窗口标志切穿透 + 透明度做状态提示。
+     *  只动这两样——宠物动画/自主行为照常，穿透是"手指层面"的事。 */
+    private fun applyGhost() {
+        val v = cv ?: return
+        v.alpha = if (ghostMode) GHOST_ALPHA else 1f
+        (v.layoutParams as? WindowManager.LayoutParams)?.let { p ->
+            p.flags = if (ghostMode)
+                p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            else
+                p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            try {
+                wm.updateViewLayout(v, p)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to update ghost flags", e)
+            }
+        }
+        // 通知文字/按钮文案与状态同步（宠物显示中才刷；通知只在服务跑着时存在）
+        refreshNotification()
+    }
+
+    /** 幽灵状态变化后刷新前台通知（_nm.notify 对同 id 的前台通知只更新内容） */
+    private fun refreshNotification() {
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.notify(NOTIFY_ID, buildNotification())
+        } catch (e: Exception) {
+            Log.w(TAG, "refresh notification failed", e)
         }
     }
 
@@ -572,6 +644,9 @@ class PetOverlayService : LifecycleService(), ViewModelStoreOwner, SavedStateReg
     companion object {
         const val EXTRA_PET_ID = "pet_id"
         const val ACTION_STOP = "com.deskpet.action.STOP_OVERLAY"
+        const val ACTION_TOGGLE_GHOST = "com.deskpet.action.TOGGLE_GHOST"
+        /** 幽灵模式的宠物透明度：一眼可辨"现在是穿透态"，又不至于看不清 */
+        const val GHOST_ALPHA = 0.75f
         private const val TAG = "PO"
         private const val NOTIFY_ID = 1
         private const val CHANNEL_ID = "deskpet_fg"

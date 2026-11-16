@@ -89,6 +89,8 @@ class MainActivity : ComponentActivity() {
         val isFirstLaunchFlow = remember { repo.isFirstLaunch().map { it as Boolean? } }
         val isFirstLaunch by isFirstLaunchFlow.collectAsStateWithLifecycle(null)
         val overlayRunning by OverlayState.running.collectAsStateWithLifecycle()
+        // 幽灵模式（触摸穿透）：UI 显示开关状态；悬浮窗由服务自己的收集器应用
+        val ghostMode by repo.ghostMode().collectAsStateWithLifecycle(false)
         // 缩放值以仓库中保存的值为准，否则重进应用/切换宠物后滑块位置会错
         val curScale = petList.find { it.id == activeId }?.scale ?: 1f
         LaunchedEffect(Unit) { SamplePetLoader.loadSamplePets(this@MainActivity, repo) }
@@ -187,6 +189,7 @@ class MainActivity : ComponentActivity() {
                 isLoading = !petListReady,
                 activePetId = activeId,
                 isOverlayRunning = overlayRunning,
+                isGhost = ghostMode,
                 curScale = curScale,
                 onPetSelected = { id ->
                     // 写盘失败（存储异常/磁盘满）不闪退：UI 由数据流驱动，写失败列表不变
@@ -209,6 +212,9 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onStopOverlay = { stopOverlay() },
+                // 幽灵模式：只写 DataStore 标志，悬浮窗由服务的收集器实时应用；
+                // 读 ghostMode 走 Compose 状态委托，取到的总是本次点击时的最新值
+                onToggleGhost = { repo.setGhostModeAsync(!ghostMode) },
                 onImportClick = { showImport = true },
                 onDeletePet = { id ->
                     sc.launch {
@@ -281,6 +287,13 @@ class MainActivity : ComponentActivity() {
                     Text("🖐 操作方式", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(4.dp))
                     Text("• 单击悬浮窗宠物 = 招手\n• 长按拖拽 = 移动位置\n• 拖拽方向 = 切换跑动/跳跃动画\n• 双指捏合 = 快速缩放\n• 界面滑块 = 精确控制大小")
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 穿透模式（幽灵）：提前说破"摸不到"这个唯一困惑点
+                    Text("👻 穿透模式", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                    Text("宠物挡住按钮或输入框时，可在收纳坞或通知栏开启「穿透模式」：手指会穿过宠物直达下层应用（宠物摸不到、拖不动），宠物变为半透明提示状态。再点一次「取消穿透」即可恢复互动。")
 
                     Spacer(Modifier.height(12.dp))
 
